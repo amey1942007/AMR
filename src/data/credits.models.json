@@ -1,0 +1,14 @@
+[
+  {
+    "what": "Just1 mecanum robot (placeholder hero AMR), by Nicolas Rodriguez",
+    "licence": "MIT",
+    "url": "https://github.com/NRdrgz/Just1",
+    "author": "Nicolas Rodriguez",
+    "licenceText": "/licenses/LICENSE-Just1.txt",
+    "changes": "STEP tessellated to GLB, parts renamed to site node names, scaled non-uniformly to 0.52 x 0.63 m footprint, battery packs and L298N boards removed, re-materialised, accent strip added, simplified + Draco/Meshopt compressed.",
+    "files": [
+      "/models/amr_hero_hi.glb",
+      "/models/amr_hero_lo.glb"
+    ]
+  }
+]

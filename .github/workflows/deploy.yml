@@ -1,39 +1,33 @@
 name: Deploy to GitHub Pages
-on: { push: { branches: [main] }, pull_request: {}, workflow_dispatch: {} }
-permissions: { contents: read, pages: write, id-token: write }
-concurrency: { group: pages-${{ github.ref }}, cancel-in-progress: true }
+on: { push: { branches: [main] }, workflow_dispatch: {} }
+permissions: { contents: read }
+concurrency: { group: pages, cancel-in-progress: true }
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 10.34.7 }
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: node scripts/check-budgets.mjs
-      - run: pnpm build
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run lint && npm run typecheck && npm test
+      - run: npm run build   # postbuild runs scripts/check-budgets.mjs and fails on budget breach
         env:
           NEXT_PUBLIC_CONTACT_ADAPTER: ${{ vars.NEXT_PUBLIC_CONTACT_ADAPTER }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_CONTACT_ENDPOINT: ${{ vars.NEXT_PUBLIC_CONTACT_ENDPOINT }}
           NEXT_PUBLIC_SITE_URL: https://amrslam.tech
           NEXT_PUBLIC_BASE_PATH: ${{ vars.NEXT_PUBLIC_BASE_PATH }}
           NEXT_PUBLIC_CONTROL_PANEL_URL: ${{ vars.NEXT_PUBLIC_CONTROL_PANEL_URL }}
       - run: test -f out/CNAME
-      - if: github.event_name != 'pull_request'
-        uses: actions/configure-pages@v5
-      - if: github.event_name != 'pull_request'
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
         with: { path: out }
   deploy:
-    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
+    permissions: { pages: write, id-token: write }
     environment: { name: github-pages, url: ${{ steps.d.outputs.page_url }} }
     steps:
       - id: d

@@ -1,6 +1,6 @@
 'use client';
 import { useRef } from 'react';
-import { S } from '@/lib/timeline';
+import { S } from '@/lib/scene-state';
 import { useTick } from './useTick';
 import { lerp } from '@/lib/monotone';
 

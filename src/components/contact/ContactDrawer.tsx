@@ -1,6 +1,7 @@
 'use client';
 import { Dialog } from '@/components/ui/Dialog';
-import { ContactForm } from './ContactForm';
+import dynamic from 'next/dynamic';
+const ContactForm = dynamic(() => import('./ContactForm').then((m) => m.ContactForm), { ssr: false, loading: () => <div className="min-h-[420px]" /> });
 import { PillButton } from '@/components/nav/PillButton';
 import { Close } from '@/components/icons';
 import { useUI } from '@/lib/ui-store';
@@ -23,9 +24,8 @@ export function ContactDrawer() {
       returnFocus={() => opener}
       initialFocus={() => (available ? document.getElementById('cf-name') : document.querySelector<HTMLElement>('#contact-mailto-wrap a'))}
     >
-      <div data-open={open} className="dlg-backdrop absolute inset-0 bg-[rgba(5,5,7,.6)]" onClick={close} />
+      <div className="dlg-backdrop absolute inset-0 bg-[rgba(5,5,7,.6)]" onClick={close} />
       <div
-        data-open={open}
         className="drawer-panel absolute top-0 right-0 flex h-full w-full flex-col overflow-y-auto border-l border-[var(--line-dark)] bg-bg p-8 text-white min-[480px]:w-[440px]"
         style={{ boxShadow: '-24px 0 64px rgba(0,0,0,.5)' }}
       >

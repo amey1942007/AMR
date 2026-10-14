@@ -7,3 +7,5 @@ next-env.d.ts
 !.env.example
 assets-src/
 .DS_Store
+test-results/
+playwright-report/

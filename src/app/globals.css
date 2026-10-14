@@ -54,9 +54,9 @@ body { -webkit-font-smoothing: antialiased; font-size: var(--text-body); line-he
 
 /* Dialog / toast motion (CSS; GSAP takes over in later milestones where needed) */
 .dlg-backdrop { opacity: 0; transition: opacity var(--dur-theme) var(--ease-io); }
-.dlg-backdrop[data-open='true'] { opacity: 1; }
+[data-open='true'] > .dlg-backdrop { opacity: 1; }
 .drawer-panel { transform: translateX(100%); transition: transform var(--dur-theme) var(--ease-io); }
-.drawer-panel[data-open='true'] { transform: none; transition-duration: var(--dur-drawer); transition-timing-function: var(--ease-expo); }
+[data-open='true'] > .drawer-panel { transform: none; transition-duration: var(--dur-drawer); transition-timing-function: var(--ease-expo); }
 .menu-panel { opacity: 0; transition: opacity var(--dur-theme) var(--ease-io); }
 .menu-panel[data-open='true'] { opacity: 1; }
 .menu-line { display: block; transform: translateY(100%); }
@@ -89,8 +89,8 @@ body { -webkit-font-smoothing: antialiased; font-size: var(--text-body); line-he
 .spinner { animation: spin 0.8s linear infinite; }
 
 @media (prefers-reduced-motion: reduce) {
-  .drawer-panel, .drawer-panel[data-open='true'] { transform: none; opacity: 0; transition: opacity var(--dur-rm) linear; }
-  .drawer-panel[data-open='true'] { opacity: 1; }
+  .drawer-panel, [data-open='true'] > .drawer-panel { transform: none; opacity: 0; transition: opacity var(--dur-rm) linear; }
+  [data-open='true'] > .drawer-panel { opacity: 1; }
   .menu-line, .menu-panel[data-open='true'] .menu-line { transform: none; transition: none; }
   .toast, .toast[data-show='true'] { transform: translate(-50%, 0); transition: opacity var(--dur-rm) linear; }
   .pill:active:not(:disabled) { transform: none; }
@@ -99,4 +99,20 @@ body { -webkit-font-smoothing: antialiased; font-size: var(--text-body); line-he
 }
 
 .dlg-root { position: fixed; inset: 0; visibility: visible; }
-.dlg-root[data-open='false'] { visibility: hidden; pointer-events: none; transition: visibility 0s linear 300ms; }
+.dlg-root[inert] { visibility: hidden; pointer-events: none; transition: visibility 0s linear 300ms; }
+
+.callout-col { top: calc(var(--nav-h) + 10vh); }
+@media (max-height: 760px) { .callout-col { top: calc(var(--nav-h) + 4vh); } }
+@media (max-height: 700px), (max-width: 1023px) { .minimap-canvas { width: 180px !important; height: 135px !important; } }
+
+/* View Transitions: 300 ms cross-document fade between pages (supporting browsers; none under reduced motion). */
+@view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 300ms; animation-timing-function: var(--ease-io); }
+@media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+
+/* Hero load-in (CSS, no JS dependency): letters y 110%→0, 900ms expo.out, stagger 70 (inline delay). Cue bob 8px 1.6s. */
+@keyframes hero-in { from { transform: translateY(110%); } to { transform: none; } }
+@keyframes cue-bob { 0%, 100% { transform: none; } 50% { transform: translateY(8px); } }
+.hero-letter { animation: hero-in var(--dur-hero-letters) var(--ease-expo) both; }
+.cue-bob { animation: cue-bob 1.6s cubic-bezier(.37,0,.63,1) infinite; }
+@media (prefers-reduced-motion: reduce) { .hero-letter, .cue-bob { animation: none; } }

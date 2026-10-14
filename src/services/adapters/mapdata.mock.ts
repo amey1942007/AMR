@@ -1,12 +1,18 @@
 import type { MapDataService } from '../types';
-/** Procedural map data until scripts/bake-map.ts exists (M4). 96×72 grid, reveal step per cell. */
+const GRID = { w: 80, h: 60 } as const; // keep in sync with lib/grid (no three.js import here)
+/** Procedural 80 × 60 map (same format as runtime/baked: reveal[4800] ++ state[4800]); border = occupied. */
 export const mockMapData: MapDataService = {
   async loadReveal() {
-    const w = 96, h = 72, out = new Uint8Array(w * h);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) out[y * w + x] = Math.min(255, ((x + y) * 255) / (w + h));
+    const n = GRID.w * GRID.h, out = new Uint8Array(n * 2);
+    for (let y = 0; y < GRID.h; y++)
+      for (let x = 0; x < GRID.w; x++) {
+        const i = y * GRID.w + x;
+        out[i] = Math.round((x / (GRID.w - 1)) * 254);
+        out[n + i] = x === 0 || y === 0 || x === GRID.w - 1 || y === GRID.h - 1 ? 2 : 1;
+      }
     return out;
   },
   async loadPath() {
-    return [[-2.5, 1.5], [-1, 1], [0.5, 0], [1.5, -1]];
+    return [[-2.5, 1.5], [0, 0], [2, 1.8]];
   },
 };

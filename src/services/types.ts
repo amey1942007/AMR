@@ -21,10 +21,12 @@ export interface ContactService {
 }
 
 type MaybePromise<T> = T | Promise<T>;
+export interface LinkItem { id: 'github' | 'demo' | 'control' | 'contact' | 'email'; label: string; href?: string; external?: boolean }
 export interface ContentService {
   getRobots(): MaybePromise<{ amr4: RobotSpec; hardware: RobotSpec }>;
   getTechStack(): MaybePromise<readonly { label: string; icon?: string }[]>;
   getCopy(): MaybePromise<Record<string, unknown>>;
+  getLinks(): MaybePromise<readonly LinkItem[]>;
 }
 
 export interface MediaService {
@@ -33,6 +35,7 @@ export interface MediaService {
   posterUrl?: string;
   heroModel: { lo?: string; hi?: string };
   roomUrl?: string;
+  floorTexture?: string;
   propsUrl?: string;
 }
 

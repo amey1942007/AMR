@@ -1,9 +1,10 @@
+import { SplitReveal } from '@/components/ui/SplitReveal';
 import { brandPaths } from '@/components/icons/brands';
 /** Decorative, non-focusable chips (R8). Missing icon → text chip. */
 export function TechStack({ items }: { items: readonly { label: string; icon?: string }[] }) {
   return (
     <div className="reveal">
-      <h2 className="text-[length:var(--text-h2)] font-semibold leading-[1.05] tracking-[-0.02em]">Tech stack</h2>
+      <SplitReveal text="Tech stack" className="text-[length:var(--text-h2)] font-semibold leading-[1.05] tracking-[-0.02em]" />
       <ul className="mt-8 flex flex-wrap gap-3">
         {items.map((it) => (
           <li key={it.label} className="tech-chip relative inline-flex h-10 items-center gap-2 rounded-full border border-[var(--line-dark)] px-[14px] text-white/60 transition-colors duration-200 hover:text-white">

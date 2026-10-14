@@ -3,16 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=20.9"
+    "node": ">=22.12"
   },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "npx --yes serve@14 out -l 3000",
+    "start": "serve out -l 3000",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "bake:camera": "tsx scripts/bake-camera.ts",
+    "check:budgets": "node scripts/check-budgets.mjs",
+    "postbuild": "node scripts/check-budgets.mjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@fontsource-variable/inter-tight": "5.3.0",
@@ -45,7 +49,9 @@
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.0",
     "prettier": "3.9.10",
+    "serve": "14.2.5",
     "tailwindcss": "4.3.3",
+    "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vitest": "3.2.7"
   },

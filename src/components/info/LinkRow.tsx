@@ -4,7 +4,8 @@ import { PillButton } from '@/components/nav/PillButton';
 import { useUI } from '@/lib/ui-store';
 import { useServices } from '@/components/providers/ServicesProvider';
 import { EMAIL, REPO_URL } from '@/lib/content';
-import { VideoModal } from './VideoModal';
+import dynamic from 'next/dynamic';
+const VideoModal = dynamic(() => import('./VideoModal').then((m) => m.VideoModal), { ssr: false });
 import { asset } from '@/lib/asset';
 
 export function LinkRow() {
@@ -26,7 +27,7 @@ export function LinkRow() {
         <PillButton kind="ghost" onClick={(e) => openDialog('contact', e.currentTarget)}>Contact</PillButton>
         <PillButton kind="ghost" href={`mailto:${EMAIL}`}>{EMAIL}</PillButton>
       </div>
-      {media.hasDemoVideo && (
+      {media.hasDemoVideo && video && (
         <VideoModal open={!!video} onClose={() => setVideo(null)} opener={video} src={asset('/video/demo.mp4')} poster={asset('/img/stills/s3.webp')} />
       )}
     </div>

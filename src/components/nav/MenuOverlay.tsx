@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Dialog } from '@/components/ui/Dialog';
 import { Logo } from './Logo';
@@ -20,7 +21,7 @@ export function MenuOverlay() {
   const pathname = usePathname();
 
   return (
-    <Dialog id="menu-overlay" open={open} onClose={closeDialog} labelledBy="menu-title" returnFocus={() => uiRefs.menuButton} className="menu-panel text-white" >
+    <Dialog id="menu-overlay" open={open} onClose={closeDialog} labelledBy="menu-title" returnFocus={() => uiRefs.menuButton} initialFocus={() => document.querySelector<HTMLElement>('#menu-overlay nav a, #menu-overlay nav button')} className="menu-panel text-white">
       <div className="absolute inset-0" style={{ background: 'var(--overlay)', backdropFilter: 'blur(16px)' }} />
       <div className="relative flex h-full flex-col">
         {/* Mirror of the top bar so the close control sits at the identical position (ui-spec §3.1). */}
@@ -35,10 +36,10 @@ export function MenuOverlay() {
               <li key={item.label} className="overflow-hidden">
                 <span className="menu-line" style={{ ['--i' as string]: i }}>
                   {'href' in item ? (
-                    <a href={item.href} className={linkCls} aria-current={pathname === item.href ? 'page' : undefined} onClick={closeDialog}>
+                    <Link href={item.href} className={linkCls} aria-current={pathname === item.href || pathname === item.href.replace(/\/$/, '') ? 'page' : undefined} onClick={closeDialog}>
                       <span aria-hidden className="menu-bar bg-grad inline-block h-1" />
                       {item.label}
-                    </a>
+                    </Link>
                   ) : (
                     <button type="button" className={linkCls} onClick={() => openDialog('contact', uiRefs.menuButton)}>
                       <span aria-hidden className="menu-bar bg-grad inline-block h-1" />

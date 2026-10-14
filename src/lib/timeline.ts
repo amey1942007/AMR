@@ -2,35 +2,8 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useScene } from './store';
 
-/** Plain per-frame scene state (brief §9/§14 + ui-spec §7.4). Written by the master timeline, read in useFrame / rAF. */
-export const S = {
-  p: 0,
-  uDrive: 0,
-  roomOpacity: 0,
-  propsIn: 0,
-  bgMix: 0,
-  cloudOpacity: 0,
-  cloudLight: 0,
-  cloudDissolve: 0,
-  stars: 0,
-  heroTitle: 1,
-  tagline: 1,
-  minimap: 0,
-  beyond: 0,
-  c1: 0,
-  c2: 0,
-  c3: 0,
-  chip: 0,
-  fog: 0,
-  envIntensity: 0.8,
-  exposure: 1.0,
-  skyMix: 0,
-  shadowFrustum: 0,
-};
-export type SceneState = typeof S;
-
-export const NAV_DARK_AT = 0.18;
-const HYST = 0.005;
+import { S, nextNavDark } from './scene-state';
+export { S, nextNavDark, NAV_DARK_AT } from './scene-state';
 
 /** Builds the paused master timeline (duration 1 → time = p). Separate from the trigger so tests can drive it. */
 export function buildMasterTimeline() {
@@ -65,13 +38,9 @@ export function buildMasterTimeline() {
   return tl;
 }
 
-/** Nav theme with ±0.005 hysteresis so it never flickers at the threshold. */
-export function nextNavDark(prev: boolean, p: number) {
-  return prev ? p > NAV_DARK_AT - HYST : p >= NAV_DARK_AT + HYST;
-}
-
 export function createJourney() {
   gsap.registerPlugin(ScrollTrigger);
+  ScrollTrigger.refresh();
   const tl = buildMasterTimeline();
   const st = ScrollTrigger.create({
     trigger: '#journey',

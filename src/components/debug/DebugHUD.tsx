@@ -1,6 +1,6 @@
 'use client';
 import { useRef } from 'react';
-import { S } from '@/lib/timeline';
+import { S } from '@/lib/scene-state';
 import { useScene } from '@/lib/store';
 import { useTick } from '@/components/journey/useTick';
 import { useServices } from '@/components/providers/ServicesProvider';

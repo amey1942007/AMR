@@ -1,0 +1,50 @@
+'use client';
+import { useEffect, useRef, useState } from 'react';
+import { S } from '@/lib/scene-state';
+import { useTick } from '@/components/journey/useTick';
+import { useServices } from '@/components/providers/ServicesProvider';
+import { asset } from '@/lib/asset';
+
+const RANGES: [number, number][] = [[0, 0.26], [0.26, 0.42], [0.42, 0.54], [0.54, 0.7], [0.7, 1.01]];
+
+/**
+ * No WebGL2 / context lost: model-viewer (lazy, only if the lo GLB exists) in the hero + stills crossfading by p.
+ * Missing stills → gradient placeholder layer. Nothing renders if neither exists (the DOM hero stays).
+ */
+export default function Fallback3D() {
+  const { media } = useServices();
+  const [hasModel, setHasModel] = useState(false);
+  const stills = useRef<(HTMLElement | null)[]>([]);
+  useEffect(() => {
+    const url = asset(media.heroModel.lo ?? '');
+    if (!media.heroModel.lo) return;
+    fetch(url, { method: 'HEAD' }).then(async (r) => {
+      if (!r.ok || (r.headers.get('content-type') ?? '').includes('text/html')) return;
+      await import('@google/model-viewer');
+      setHasModel(true);
+    }).catch(() => {});
+  }, [media.heroModel.lo]);
+  useTick(() => {
+    stills.current.forEach((el, i) => {
+      if (!el) return;
+      const [a, b] = RANGES[i];
+      const o = Math.min(1, Math.max(0, Math.min((S.p - a + 0.03) / 0.06, (b - S.p + 0.03) / 0.06)));
+      el.style.opacity = String(i === 0 ? o * S.bgMix : o);
+    });
+  });
+  return (
+    <div aria-hidden className="pointer-events-none fixed inset-0" style={{ zIndex: 2 }}>
+      {media.stillUrls.length > 0 &&
+        RANGES.map((_, i) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img key={i} ref={(el) => { stills.current[i] = el; }} src={media.stillUrls[i]} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ opacity: 0 }} />
+        ))}
+      {hasModel && (
+        <div className="absolute inset-x-0 top-[20vh] mx-auto h-[60vh] max-w-[900px]" style={{ opacity: 'var(--mv-o, 1)' }}>
+          {/* @ts-expect-error custom element */}
+          <model-viewer src={asset(media.heroModel.lo!)} poster={media.posterUrl} auto-rotate rotation-per-second="8deg" disable-zoom interaction-prompt="none" loading="lazy" style={{ width: '100%', height: '100%', background: 'transparent' }} />
+        </div>
+      )}
+    </div>
+  );
+}

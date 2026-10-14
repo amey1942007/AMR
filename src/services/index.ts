@@ -1,35 +1,41 @@
 import type { AppConfig } from '@/lib/config';
 import type { ContactService, Services } from './types';
-import { createMockContact, type MockMode } from './adapters/contact.mock';
-import { createMailtoContact } from './adapters/contact.mailto';
-import { createSupabaseContact } from './adapters/contact.supabase';
-import { createHttpContact } from './adapters/contact.http';
+import { isPublishableKey } from './adapters/contact.shared';
 import { staticContent } from './adapters/content.static';
 import { staticMedia } from './adapters/media.static';
-import { mockMapData } from './adapters/mapdata.mock';
+import { runtimeMapData } from './adapters/mapdata.runtime';
 
-export function createContactService(cfg: AppConfig, mockMode?: MockMode): ContactService {
-  switch (cfg.contactAdapter) {
-    case 'supabase':
-      return cfg.supabaseUrl && cfg.supabaseKey
-        ? createSupabaseContact({ url: cfg.supabaseUrl, key: cfg.supabaseKey })
-        : createMailtoContact();
-    case 'mock':
-      return createMockContact({ mode: mockMode });
-    case 'http':
-      return createHttpContact();
-    default:
-      return createMailtoContact();
-  }
+/**
+ * Picks the contact adapter by config. Availability is decided synchronously from config; the adapter code itself
+ * (and supabase-js) loads on first submit, keeping it out of the initial bundle.
+ */
+export function createContactService(cfg: AppConfig): ContactService {
+  const kind = cfg.contactAdapter;
+  const available =
+    kind === 'mock' ||
+    (kind === 'supabase' && !!cfg.supabaseUrl && !!cfg.supabaseKey && isPublishableKey(cfg.supabaseKey) && /^https:\/\//.test(cfg.supabaseUrl)) ||
+    (kind === 'http' && !!(cfg.contactEndpoint ?? '/api/contact'));
+  let impl: Promise<ContactService> | null = null;
+  const load = () =>
+    (impl ??= (async () => {
+      if (kind === 'supabase' && available) return (await import('./adapters/contact.supabase')).createSupabaseContact({ url: cfg.supabaseUrl!, key: cfg.supabaseKey! });
+      if (kind === 'mock') return (await import('./adapters/contact.mock')).createMockContact();
+      if (kind === 'http') return (await import('./adapters/contact.http')).createHttpContact({ endpoint: cfg.contactEndpoint ?? '/api/contact' });
+      return (await import('./adapters/contact.mailto')).createMailtoContact();
+    })());
+  return {
+    name: available ? kind : 'mailto',
+    isAvailable: () => available,
+    submit: async (p) => (available ? (await load()).submit(p) : { status: 'unavailable' }),
+  };
 }
 
-/** opts.mockMode: dev-only override from ?mock=error|slow (only honoured when the mock adapter is active). */
-export function createServices(cfg: AppConfig, opts: { mockMode?: MockMode } = {}): Services {
+export function createServices(cfg: AppConfig): Services {
   return {
-    contact: createContactService(cfg, opts.mockMode),
+    contact: createContactService(cfg),
     content: staticContent,
     media: staticMedia,
-    mapData: mockMapData,
+    mapData: runtimeMapData,
     config: { controlPanelUrl: cfg.controlPanelUrl, siteUrl: cfg.siteUrl, basePath: cfg.basePath, email: cfg.email },
   };
 }

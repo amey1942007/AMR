@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { getLenis } from '@/lib/lenis-ref';
 
 const FOCUSABLE =
@@ -27,6 +27,12 @@ interface DialogProps {
  */
 export function Dialog({ open, onClose, labelledBy, id, className, initialFocus, returnFocus, children }: DialogProps) {
   const ref = useRef<HTMLDivElement>(null);
+  // `shown` flips one frame after `open` so CSS enter transitions run even when mounted already open (lazy dialogs).
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const r = requestAnimationFrame(() => setShown(open));
+    return () => cancelAnimationFrame(r);
+  }, [open]);
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -40,10 +46,15 @@ export function Dialog({ open, onClose, labelledBy, id, className, initialFocus,
     const prevOverflow = document.documentElement.style.overflow;
     document.documentElement.style.overflow = 'hidden';
     getLenis()?.stop();
-    const t = window.setTimeout(() => {
-      const target = initialFocus?.() ?? root.querySelector<HTMLElement>(FOCUSABLE);
-      target?.focus();
-    }, 30);
+    // initialFocus may target lazily loaded content (the form): retry briefly before falling back.
+    let tries = 0;
+    const focusIn = () => {
+      const target = initialFocus?.();
+      if (target) return target.focus();
+      if (initialFocus && ++tries < 20) { t = window.setTimeout(focusIn, 50); return; }
+      root.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+    };
+    let t = window.setTimeout(focusIn, 30);
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -69,7 +80,7 @@ export function Dialog({ open, onClose, labelledBy, id, className, initialFocus,
       getLenis()?.start();
       // Defer so a dialog opened by this close (Menu → Contact) can claim focus first.
       window.setTimeout(() => {
-        if (!document.querySelector('[role="dialog"][data-open="true"]')) returnFocus?.()?.focus();
+        if (!document.querySelector('[role="dialog"]:not([inert])')) returnFocus?.()?.focus();
       }, 0);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -82,7 +93,7 @@ export function Dialog({ open, onClose, labelledBy, id, className, initialFocus,
       role="dialog"
       aria-modal="true"
       aria-labelledby={labelledBy}
-      data-open={open}
+      data-open={open && shown}
       inert={!open}
       aria-hidden={!open}
       className={`dlg-root ${className ?? ''}`}

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Logo } from '@/components/nav/Logo';
 import { COMPANY_NAME, EMAIL, REPO_URL } from '@/lib/content';
 
@@ -12,8 +13,8 @@ export function Footer() {
       <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-1 text-[length:var(--text-small)]">
         <li><a className={link} href={`mailto:${EMAIL}`}>{EMAIL}</a></li>
         <li><a className={link} href={REPO_URL} target="_blank" rel="noopener noreferrer">GitHub<span className="sr-only"> (opens in new tab)</span></a></li>
-        <li><a className={link} href="/privacy/">Privacy</a></li>
-        <li><a className={link} href="/credits/">Credits</a></li>
+        <li><Link className={link} href="/privacy/">Privacy</Link></li>
+        <li><Link className={link} href="/credits/">Credits</Link></li>
       </ul>
       <p className="mt-6 text-[length:var(--text-small)] text-muted">© 2026 {COMPANY_NAME}</p>
     </footer>

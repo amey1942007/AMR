@@ -9,8 +9,11 @@ export const useScene = create<{
   navDark: boolean;
   fps: number;
   robotSource: 'placeholder' | 'lo' | 'hi';
-}>(() => ({ uMap: 0, mapPct: 0, speed: 0, tier: 'high', navDark: false, fps: 0, robotSource: 'placeholder' }));
+  load: number;
+}>(() => ({ uMap: 0, mapPct: 0, speed: 0, tier: 'high', navDark: false, fps: 0, robotSource: 'placeholder', load: 0 }));
 /** Robot world→screen projection, written each frame by the 3D scene, read by the leader line. */
 export const robotScreen = { x: 0, y: 0, visible: false };
 /** Robot pose for the minimap (written by RobotDriver). */
 export const robotPose = { x: -2.5, z: 1.5, yaw: 0 };
+/** lidar_top world position (written by HeroRobot). */
+export const lidarWorld = { x: -2.5, y: 0.21, z: 1.5 };

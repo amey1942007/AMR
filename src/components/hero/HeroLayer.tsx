@@ -1,7 +1,6 @@
 'use client';
-import { useEffect, useRef } from 'react';
-import gsap from 'gsap';
-import { S } from '@/lib/timeline';
+import { useRef } from 'react';
+import { S } from '@/lib/scene-state';
 import { useTick } from '@/components/journey/useTick';
 import { copy } from '@/lib/content';
 
@@ -15,14 +14,6 @@ export function HeroLayer({ isStatic = false }: { isStatic?: boolean }) {
   const cue = useRef<HTMLSpanElement>(null);
   const letters = useRef<HTMLSpanElement>(null);
   const last = useRef({ t: -1, g: -1 });
-
-  useEffect(() => {
-    if (isStatic || !letters.current) return;
-    const spans = letters.current.querySelectorAll('span');
-    const a = gsap.fromTo(spans, { yPercent: 110 }, { yPercent: 0, duration: 0.9, ease: 'expo.out', stagger: 0.07 });
-    const b = cue.current ? gsap.to(cue.current, { y: 8, duration: 0.8, ease: 'sine.inOut', yoyo: true, repeat: -1 }) : null;
-    return () => { a.kill(); b?.kill(); };
-  }, [isStatic]);
 
   useTick(() => {
     if (last.current.t !== S.heroTitle && title.current) {
@@ -47,7 +38,7 @@ export function HeroLayer({ isStatic = false }: { isStatic?: boolean }) {
       <h1 ref={title} className="font-display text-[length:var(--text-hero)] font-extrabold leading-[0.8] tracking-[-0.06em] will-change-transform">
         <span className="sr-only">AMR — Autonomous Mobile Robots</span>
         <span ref={letters} aria-hidden className="inline-flex overflow-hidden pb-[0.06em]">
-          {'AMR'.split('').map((l) => <span key={l} className="inline-block">{l}</span>)}
+          {'AMR'.split('').map((l, i) => <span key={l} className={isStatic ? 'inline-block' : 'hero-letter inline-block'} style={{ animationDelay: `${i * 70}ms` }}>{l}</span>)}
         </span>
       </h1>
       <div ref={tag} className="absolute bottom-[calc(var(--gutter)+48px)] left-[var(--gutter)] max-w-[28ch]">
@@ -55,7 +46,7 @@ export function HeroLayer({ isStatic = false }: { isStatic?: boolean }) {
         <p className="mt-3">{copy.tagline}</p>
       </div>
       <div className="absolute right-[var(--gutter)] bottom-[var(--gutter)]">
-        <span ref={cue} aria-hidden className="eyebrow inline-block">SCROLL ↓</span>
+        <span ref={cue} aria-hidden className={`eyebrow inline-block ${isStatic ? '' : 'cue-bob'}`}>SCROLL ↓</span>
       </div>
     </section>
   );

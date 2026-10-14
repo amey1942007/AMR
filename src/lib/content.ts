@@ -91,3 +91,12 @@ export const navItems = [
   { label: 'Contact', action: 'contact' as const },
   { label: 'Privacy', href: '/privacy/' },
 ] as const;
+
+/** LinkRow items (brief §12.4). `demo` shows only when media.hasDemoVideo; `control` uses config.controlPanelUrl. */
+export const links = [
+  { id: 'github', label: 'GitHub repo', href: REPO_URL, external: true },
+  { id: 'demo', label: 'Watch demo' },
+  { id: 'control', label: 'Control panel' },
+  { id: 'contact', label: 'Contact' },
+  { id: 'email', label: EMAIL, href: `mailto:${EMAIL}` },
+] as const;
