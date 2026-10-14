@@ -1,0 +1,75 @@
+/* Single source of design tokens (ui-spec §1). Mirrored in src/lib/tokens.ts (parity-tested). */
+:root {
+  --bg: #050507;
+  --bg-hero: #f2f1f5;
+  --bg-room: #0a0a10;
+  --ink: #0b0b10;
+  --paper: #ffffff;
+  --muted: #8a8794;
+  --muted-on-light: #5e5b68;
+  --line-dark: rgba(255, 255, 255, 0.12);
+  --line-light: rgba(11, 11, 16, 0.12);
+  --violet: #7b2ff7;
+  --magenta: #e81cb0;
+  --pill-end: #c0168f;
+  --grad: linear-gradient(90deg, #7b2ff7 0%, #e81cb0 100%);
+  --grad-pill: linear-gradient(90deg, #7b2ff7 0%, #c0168f 100%);
+  --sky-zenith: #07060c;
+  --sky-horizon: #1a0b3d;
+  --cloud-dark: #3a2370;
+  --cloud-light: #e9e3f7;
+  --grid-free: rgba(255, 255, 255, 0.08);
+  --grid-occ: #e81cb0;
+  --grid-unknown: transparent;
+  --glass: rgba(10, 10, 14, 0.55);
+  --glass-fallback: rgba(10, 10, 14, 0.85);
+  --overlay: rgba(5, 5, 7, 0.95);
+  --danger: #ff6b8b;
+  --success: #5ee6a8;
+
+  --text-hero: clamp(10rem, 28vw, 30rem);
+  --text-display: clamp(3rem, 8vw, 8rem);
+  --text-menu: clamp(2.25rem, 5vw, 4.5rem);
+  --text-h2: clamp(2rem, 3.6vw, 3.5rem);
+  --text-h3: clamp(1.375rem, 1.8vw, 1.75rem);
+  --text-callout: clamp(1.125rem, 1.4vw, 1.5rem);
+  --text-body: clamp(1rem, 1.05vw, 1.125rem);
+  --text-small: 0.875rem;
+  --text-eyebrow: 0.75rem;
+  --text-button: 0.875rem;
+
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px;
+  --space-8: 32px; --space-10: 40px; --space-12: 48px; --space-16: 64px; --space-24: 96px; --space-32: 128px;
+  --nav-h: 72px;
+  --gutter: clamp(16px, 3vw, 40px);
+  --content-max: 1200px;
+  --section-gap: clamp(96px, 12vh, 160px);
+
+  --radius-pill: 999px;
+  --radius-card: 16px;
+  --radius-input: 10px;
+  --radius-chip: 8px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-io: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-micro: cubic-bezier(0.33, 1, 0.68, 1);
+  --dur-micro: 200ms;
+  --dur-theme: 300ms;
+  --dur-bg-pos: 400ms;
+  --dur-enter: 700ms;
+  --dur-toast: 450ms;
+  --dur-drawer: 500ms;
+  --dur-menu: 600ms;
+  --dur-hero-letters: 900ms;
+  --dur-robot-in: 1200ms;
+  --dur-rm: 200ms;
+
+  --z-backdrop: 0; --z-hero: 1; --z-canvas: 2; --z-overlay: 10; --z-content: 20; --z-scrim: 40;
+  --z-nav: 50; --z-toast: 60; --z-dialog: 70; --z-skip: 100;
+
+  --nav-fg: var(--ink); /* swapped to --paper at p ≥ .18 (M1) */
+}
+@media (max-width: 767px) {
+  :root { --nav-h: 64px; }
+}
