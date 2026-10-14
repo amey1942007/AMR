@@ -27,7 +27,7 @@
   --danger: #ff6b8b;
   --success: #5ee6a8;
 
-  --text-hero: clamp(10rem, 28vw, 30rem);
+  --text-hero: clamp(4.5rem, 28vw, 30rem);
   --text-display: clamp(3rem, 8vw, 8rem);
   --text-menu: clamp(2.25rem, 5vw, 4.5rem);
   --text-h2: clamp(2rem, 3.6vw, 3.5rem);
