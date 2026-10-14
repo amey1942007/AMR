@@ -17,7 +17,9 @@ export function SkyDome({ stars = 600 }: { stars?: number }) {
       float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
       void main(){ float t = smoothstep(-0.05, 0.6, vDir.y); vec3 sky = mix(uHor, uZen, t);
         vec3 c = mix(uRoom, sky, uMix) + (h(gl_FragCoord.xy) - .5) / 255.;
-        gl_FragColor = vec4(c, uMix); #include <colorspace_fragment> }`,
+        gl_FragColor = vec4(c, uMix);
+          #include <colorspace_fragment>
+        }`,
   }), []);
   const starGeo = useMemo(() => {
     const a = new Float32Array(stars * 3);

@@ -45,7 +45,9 @@ export function CloudDeck({ count = 8, segments = 20 }: { count?: number; segmen
         void main(){ vec4 t = texture2D(uTex, vUv); float a = t.r * uOpacity;
           a *= smoothstep(uDissolve, uDissolve + .18, t.g * .82 + .18 * t.r);
           if (a < .003) discard; vec3 col = mix(uDark, uLight, uLightMix) * vShade;
-          gl_FragColor = vec4(col, a * .85); #include <colorspace_fragment> }`,
+          gl_FragColor = vec4(col, a * .85);
+          #include <colorspace_fragment>
+        }`,
     });
     return { geo, mat };
   }, [tex, count, segments]);
