@@ -11,7 +11,10 @@ function hasWebGL2() {
   if (webgl2 !== null) return webgl2;
   try {
     const c = document.createElement('canvas');
-    webgl2 = !!c.getContext('webgl2');
+    const ctx = c.getContext('webgl2');
+    webgl2 = !!ctx;
+    // Review #13: release the probe context right away (browsers cap live contexts at ~16).
+    ctx?.getExtension('WEBGL_lose_context')?.loseContext();
   } catch {
     webgl2 = false;
   }

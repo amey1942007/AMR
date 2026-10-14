@@ -1,0 +1,7 @@
+%% /technology Fig. 5 (brief:§0). Plugin names CODE-PENDING: generic labels only.
+flowchart LR
+  G[goal] --> P[global planner]
+  P --> C[controller]
+  C --> M[DDSM115 motors]
+  S[safety stop] -.-> M
+  F[frontier exploration] --> G

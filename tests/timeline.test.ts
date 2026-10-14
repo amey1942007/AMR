@@ -54,5 +54,5 @@ describe('grid bake', () => {
     expect(a).toBeGreaterThan(0); expect(b).toBeGreaterThan(a); expect(mappedPct(m.reveal, m.total, 1)).toBe(100);
   });
   it('has occupied cells', () => expect(m.state.filter((s) => s === 2).length).toBeGreaterThan(50));
-  it('ray hits the west wall from start', () => { const r = castRay(-2.5, 1.5, Math.PI); expect(r.hit).toBe(true); expect(r.dist).toBeCloseTo(1.5, 1); });
+  it('ray down the corridor hits the west exterior wall', () => { const r = castRay(0, -0.1, Math.PI); expect(r.hit).toBe(true); expect(r.dist).toBeCloseTo(4.925, 2); });
 });

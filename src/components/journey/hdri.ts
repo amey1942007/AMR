@@ -1,32 +1,30 @@
-import { DataTexture, EquirectangularReflectionMapping, FloatType, HalfFloatType, LinearFilter, RGBAFormat, DataUtils } from 'three';
+import { DataTexture, EquirectangularReflectionMapping, HalfFloatType, LinearFilter, RGBAFormat } from 'three';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
-
-/** Must match scripts/compress_hdri.py */
-const LMIN = -8, LMAX = 10;
+import { decodeInWorker } from '@/lib/decode-client';
+import { decodeLogPixels } from '@/lib/hdri-decode';
 
 export function loadHdr(url: string) {
   return new HDRLoader().setDataType(HalfFloatType).loadAsync(url).then((t) => { t.mapping = EquirectangularReflectionMapping; return t; });
 }
 
-/** Decode the streamed 2K log-encoded WebP back to linear HDR (half float). */
+/** Decode the streamed 2K log-encoded WebP back to linear HDR (half float), in the decode worker when available. */
 export async function loadLogWebp(url: string) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HDRI ${res.status}`);
-  const bmp = await createImageBitmap(await res.blob(), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
-  const c = new OffscreenCanvas(bmp.width, bmp.height);
-  const ctx = c.getContext('2d')!;
-  ctx.drawImage(bmp, 0, 0);
-  const src = ctx.getImageData(0, 0, bmp.width, bmp.height).data;
-  const lut = new Uint16Array(256);
-  for (let i = 0; i < 256; i++) lut[i] = i === 0 ? 0 : DataUtils.toHalfFloat(2 ** (LMIN + (i / 255) * (LMAX - LMIN)));
-  const out = new Uint16Array(bmp.width * bmp.height * 4);
-  const one = DataUtils.toHalfFloat(1);
-  for (let i = 0; i < src.length; i += 4) { out[i] = lut[src[i]]; out[i + 1] = lut[src[i + 1]]; out[i + 2] = lut[src[i + 2]]; out[i + 3] = one; }
-  const t = new DataTexture(out, bmp.width, bmp.height, RGBAFormat, HalfFloatType);
+  const abs = new URL(url, location.href).href;
+  let px: Uint16Array, w: number, h: number;
+  const job = decodeInWorker<{ data: Uint16Array; w: number; h: number }>({ kind: 'hdri', url: abs });
+  if (job) ({ data: px, w, h } = await job);
+  else {
+    const res = await fetch(abs);
+    if (!res.ok) throw new Error(`HDRI ${res.status}`);
+    const bmp = await createImageBitmap(await res.blob(), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
+    const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+    const ctx = c.getContext('2d')!; ctx.drawImage(bmp, 0, 0);
+    px = decodeLogPixels(ctx.getImageData(0, 0, bmp.width, bmp.height).data); w = bmp.width; h = bmp.height;
+  }
+  const t = new DataTexture(px, w, h, RGBAFormat, HalfFloatType);
   t.flipY = true;
   t.mapping = EquirectangularReflectionMapping;
   t.minFilter = t.magFilter = LinearFilter;
   t.needsUpdate = true;
-  void FloatType;
   return t;
 }

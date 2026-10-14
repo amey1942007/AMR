@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { BackSide, BufferAttribute, BufferGeometry, Color, type Group, type PointsMaterial, ShaderMaterial } from 'three';
 import { S } from '@/lib/scene-state';
@@ -31,6 +31,9 @@ export function SkyDome({ stars = 600 }: { stars?: number }) {
     }
     const geo = new BufferGeometry(); geo.setAttribute('position', new BufferAttribute(a, 3)); return geo;
   }, [stars]);
+  // Review #13: memoised GPU objects passed by prop are not auto-disposed by R3F.
+  useEffect(() => () => mat.dispose(), [mat]);
+  useEffect(() => () => starGeo.dispose(), [starGeo]);
   const starMat = useRef<PointsMaterial>(null);
   useFrame(() => {
     if (!g.current) return;

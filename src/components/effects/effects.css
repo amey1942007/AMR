@@ -1,0 +1,68 @@
+/* login-spec §0 — CSS/SVG only, transform/opacity, pause when html[data-hidden] or .fx-off. */
+@keyframes pulse-ring {
+  0% { transform: scale(0.2); opacity: 0.5; }
+  100% { transform: scale(1); opacity: 0; }
+}
+@keyframes wave-drift {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
+}
+@keyframes wave-breathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes scan-sweep {
+  to { transform: rotate(360deg); }
+}
+@keyframes map-chip {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@keyframes shimmer {
+  from { transform: translateX(-100%) skewX(-12deg); }
+  to { transform: translateX(350%) skewX(-12deg); }
+}
+
+.fx-rings circle { transform-origin: center; transform-box: fill-box; animation: pulse-ring var(--fx-period, 3.2s) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) infinite; }
+.fx-rings circle:nth-child(1) { animation-delay: 0s; }
+.fx-rings circle:nth-child(2) { animation-delay: calc(var(--fx-period, 3.2s) / 4); }
+.fx-rings circle:nth-child(3) { animation-delay: calc(var(--fx-period, 3.2s) / 2); }
+.fx-rings circle:nth-child(4) { animation-delay: calc(var(--fx-period, 3.2s) * 0.75); }
+
+.fx-waves .fx-wave-track { animation: wave-drift 24s linear infinite; }
+.fx-waves .fx-wave-breathe { animation: wave-breathe 8s ease-in-out infinite; }
+
+.fx-sweep { animation: scan-sweep var(--fx-period, 4s) linear infinite; transform-origin: center; transform-box: fill-box; }
+
+.fx-chip-pulse { animation: map-chip 1.6s ease-in-out infinite; }
+
+.skel-shimmer::after {
+  content: '';
+  position: absolute; inset: 0; width: 30%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.06), transparent);
+  animation: shimmer 1.6s linear infinite;
+}
+
+html[data-hidden] .fx-rings circle,
+html[data-hidden] .fx-waves .fx-wave-track,
+html[data-hidden] .fx-waves .fx-wave-breathe,
+html[data-hidden] .fx-sweep,
+html[data-hidden] .fx-chip-pulse,
+html[data-hidden] .skel-shimmer::after,
+.fx-off .fx-rings circle,
+.fx-off .fx-waves .fx-wave-track,
+.fx-off .fx-waves .fx-wave-breathe,
+.fx-off .fx-sweep,
+.fx-off .fx-chip-pulse,
+.fx-off .skel-shimmer::after { animation-play-state: paused; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-rings circle { animation: none; opacity: .25; }
+  .fx-rings circle:nth-child(2) { opacity: .15; }
+  .fx-rings circle:nth-child(3) { opacity: .08; }
+  .fx-rings circle:nth-child(4) { display: none; }
+  .fx-waves .fx-wave-track, .fx-waves .fx-wave-breathe { animation: none; }
+  .fx-sweep { display: none; }
+  .fx-chip-pulse { animation: none; }
+  .skel-shimmer::after { display: none; }
+}

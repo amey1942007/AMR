@@ -12,7 +12,13 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      # Path clearance check (scripts/apartment, vendored from tools/apartment so CI has it): exits 1 when the robot
+      # footprint comes closer than 0.15 m to any wall or furniture collider anywhere on the path.
+      - run: npm run check:path
       - run: npm run build
       - run: test -f out/CNAME
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+      # Both Playwright projects: "static" (serves out/ on :4173) and "dev-mock" (login mock adapter, which production
+      # builds refuse). playwright.config.ts starts `next dev -p 3000` itself for dev-mock (webServer, 120 s timeout).
+      - run: npm run test:e2e -- --project=static --project=dev-mock
+        env: { CI: 'true' }

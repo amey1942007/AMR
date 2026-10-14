@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { unbounded, interTight, jetbrains } from './fonts';
 import { AppShell } from '@/components/AppShell';
+import { MaintenanceGate, MAINTENANCE } from '@/components/utility/MaintenanceGate';
 import { asset } from '@/lib/asset';
 import { copy, COMPANY_NAME, EMAIL, FOUNDER, REPO_URL } from '@/lib/content';
 
@@ -13,8 +14,9 @@ export const metadata: Metadata = {
   description: copy.metaDescription,
   alternates: { canonical: '/' },
   icons: { icon: asset('/favicon.svg') },
-  openGraph: { title: copy.metaTitle, description: copy.metaDescription, url: '/', siteName: 'amrslam.tech', type: 'website' },
-  twitter: { card: 'summary_large_image', title: copy.metaTitle, description: copy.metaDescription },
+  openGraph: { title: copy.metaTitle, description: copy.metaDescription, url: '/', siteName: 'amrslam.tech', type: 'website', images: [{ url: '/og.png', width: 1200, height: 630 }] },
+  ...(MAINTENANCE ? { robots: { index: false, follow: false } } : {}),
+  twitter: { card: 'summary_large_image', title: copy.metaTitle, description: copy.metaDescription, images: ['/og.png'] },
 };
 export const viewport: Viewport = { themeColor: '#050507', width: 'device-width', initialScale: 1 };
 
@@ -33,7 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${unbounded.variable} ${interTight.variable} ${jetbrains.variable}`}>
       <body>
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-        <AppShell>{children}</AppShell>
+        <AppShell><MaintenanceGate>{children}</MaintenanceGate></AppShell>
       </body>
     </html>
   );

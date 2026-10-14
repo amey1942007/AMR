@@ -4,7 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import { Line } from '@react-three/drei';
 import { Color, Vector3 } from 'three';
 import type { Line2, LineSegments2 } from 'three-stdlib';
-import { pathCurve } from '@/lib/path';
+import { pathCurve, robotU } from '@/lib/path';
 import { S } from '@/lib/scene-state';
 
 const N = 300, AHEAD = 1.2;
@@ -22,15 +22,15 @@ export function Trail() {
   const len = useMemo(() => pathCurve().getLength(), []);
   const ahead = useMemo(() => Array.from({ length: 16 }, () => new Vector3()), []);
   useFrame(() => {
-    const vis = S.uDrive > 0.001 && S.p <= 0.9;
-    const k = Math.max(0, Math.floor(S.uDrive * (N - 1)));
+    const vis = robotU.value > 0.001 && S.p <= 0.9;
+    const k = Math.max(0, Math.floor(robotU.value * (N - 1)));
     if (solid.current) { solid.current.visible = vis; solid.current.geometry.instanceCount = k; }
     if (dashed.current) {
-      dashed.current.visible = vis && S.uDrive < 0.999;
+      dashed.current.visible = vis && robotU.value < 0.999;
       const c = pathCurve();
       const flat: number[] = [];
       for (let i = 0; i < ahead.length; i++) {
-        const u = Math.min(1, S.uDrive + (AHEAD / len) * (i / (ahead.length - 1)));
+        const u = Math.min(1, robotU.value + (AHEAD / len) * (i / (ahead.length - 1)));
         c.getPointAt(u, ahead[i]);
         flat.push(ahead[i].x, 0.012, ahead[i].z);
       }

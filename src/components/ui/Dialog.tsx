@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { getLenis } from '@/lib/lenis-ref';
 
 const FOCUSABLE =
@@ -38,7 +38,9 @@ export function Dialog({ open, onClose, labelledBy, id, className, initialFocus,
     onCloseRef.current = onClose;
   });
 
-  useEffect(() => {
+  // Layout effect: the Escape/Tab handlers and inert background must exist in the same commit that makes the dialog
+  // interactive. As a passive effect it could lag a slow (WebGL-heavy) frame, so an early Escape was lost.
+  useLayoutEffect(() => {
     if (!open) return;
     const root = ref.current!;
     const bg = BACKGROUND_IDS.map((i) => document.getElementById(i)).filter(Boolean) as HTMLElement[];
@@ -80,7 +82,10 @@ export function Dialog({ open, onClose, labelledBy, id, className, initialFocus,
       getLenis()?.start();
       // Defer so a dialog opened by this close (Menu → Contact) can claim focus first.
       window.setTimeout(() => {
-        if (!document.querySelector('[role="dialog"]:not([inert])')) returnFocus?.()?.focus();
+        // Ignore this dialog itself: on a slow frame its inert attribute may not be committed yet, which used to skip
+        // the focus return (smoke.spec.ts:32, 'Open menu' not focused after Escape).
+        const other = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).some((d) => d !== root && !d.hasAttribute('inert'));
+        if (!other) returnFocus?.()?.focus();
       }, 0);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

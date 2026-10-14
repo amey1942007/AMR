@@ -15,7 +15,10 @@ def fbm(oct=5):
 y, x = np.mgrid[-1:1:N * 1j, -1:1:N * 1j]
 r = np.sqrt(x * x + y * y)
 fall = np.clip(1 - r, 0, 1) ** 1.6
-d = np.clip(fall * (0.35 + 0.9 * fbm()), 0, 1)
-g = fbm(4)
+d = np.clip(fall * (0.45 + 0.7 * fbm(2)), 0, 1)
+# v2: blurrier density (σ +30 %), low-frequency (2-octave) noise → stylised, not photographic.
+from PIL import ImageFilter
+d = np.asarray(Image.fromarray((d * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(6.5))) / 255.0
+g = fbm(2)
 img = np.dstack([d, g, np.zeros_like(d)])
 Image.fromarray((img * 255).astype(np.uint8), 'RGB').save('public/img/clouds/cloud.webp', 'WEBP', quality=85)

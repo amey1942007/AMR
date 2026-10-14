@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 import { useServices } from '@/components/providers/ServicesProvider';
 import { Placeholder } from './Placeholder';
 import { copy } from '@/lib/content';
@@ -13,16 +14,19 @@ export function ReducedMotionStory() {
       <div className="mx-auto flex max-w-[var(--content-max)] flex-col gap-16 px-[var(--gutter)]">
         {CAPTIONS.map((cap, i) => (
           <figure key={cap}>
-            {media.stillUrls[i] ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={media.stillUrls[i]} alt="" width={1920} height={1080} loading={i ? 'lazy' : 'eager'} className="h-auto w-full rounded-[var(--radius-card)]" />
-            ) : (
-              <Placeholder kind="room" />
-            )}
+            <StillOrPlaceholder src={media.stillUrls[i]} eager={!i} />
             <figcaption className="mt-4 text-[length:var(--text-callout)] font-semibold">{cap}</figcaption>
           </figure>
         ))}
       </div>
     </section>
   );
+}
+
+/** Missing/broken still → room placeholder (never a broken image). */
+function StillOrPlaceholder({ src, eager }: { src?: string; eager: boolean }) {
+  const [bad, setBad] = useState(false);
+  if (!src || bad) return <Placeholder kind="room" />;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt="" width={1920} height={1080} loading={eager ? 'eager' : 'lazy'} onError={() => setBad(true)} className="h-auto w-full rounded-[var(--radius-card)]" />;
 }

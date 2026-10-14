@@ -1,0 +1,7 @@
+%% /technology Fig. 7 (brief:§0). Model size, device and topics CODE-PENDING.
+flowchart LR
+  C[pan/tilt camera] --> Y[YOLO-World]
+  Y --> L[object labels]
+  S[slam_toolbox map] --> SM[semantic map]
+  L --> SM
+  SM --> D[web dashboard]

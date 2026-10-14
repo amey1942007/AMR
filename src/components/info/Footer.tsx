@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import Link from '@/components/nav/AppLink';
 import { Logo } from '@/components/nav/Logo';
 import { COMPANY_NAME, EMAIL, REPO_URL } from '@/lib/content';
 

@@ -1,4 +1,5 @@
 'use client';
+import { asset } from '@/lib/asset';
 import type { MouseEvent, ReactNode } from 'react';
 import { ArrowRight, ExternalLink } from '@/components/icons';
 import { Spinner } from '@/components/feedback/Spinner';
@@ -16,6 +17,7 @@ interface Props {
   children: ReactNode;
 }
 
+// Internal hrefs go through asset(): a raw <a> doesn't get Next's basePath (GitHub Pages /AMR).
 export function PillButton({ kind, href, onClick, icon, loading, disabled, type = 'button', className = '', ariaLabel, children }: Props) {
   const cls = `pill pill-${kind} relative inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-full px-5 text-[length:var(--text-button)] font-medium tracking-[0.02em] whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40 ${
     kind === 'filled' ? 'text-white' : 'border border-current/40'
@@ -43,7 +45,7 @@ export function PillButton({ kind, href, onClick, icon, loading, disabled, type 
   if (href) {
     const ext = icon === 'external';
     return (
-      <a href={href} onClick={onClick} className={cls} aria-label={ariaLabel} {...(ext ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
+      <a href={!ext && href.startsWith('/') && !href.startsWith('//') ? asset(href) : href} onClick={onClick} className={cls} aria-label={ariaLabel} {...(ext ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
         {inner}
       </a>
     );

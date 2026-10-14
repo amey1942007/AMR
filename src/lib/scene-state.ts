@@ -11,3 +11,6 @@ const HYST = 0.005;
 export function nextNavDark(prev: boolean, p: number) {
   return prev ? p > NAV_DARK_AT - HYST : p >= NAV_DARK_AT + HYST;
 }
+
+/** `?capture=1` (screenshot tooling only): scroll scrub and robot catch-up snap instantly so slow software-GL frames still land on the requested p. */
+export const CAPTURE = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('capture');

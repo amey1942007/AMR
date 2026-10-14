@@ -1,5 +1,5 @@
 'use client';
-import Link from 'next/link';
+import Link from '@/components/nav/AppLink';
 import { usePathname } from 'next/navigation';
 import { Dialog } from '@/components/ui/Dialog';
 import { Logo } from './Logo';

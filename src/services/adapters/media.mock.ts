@@ -1,6 +1,8 @@
+import { simulationVideo } from '@/data/media';
 import type { MediaService } from '../types';
 /** Everything present (exercise all media branches in tests). */
 export const mockMedia: MediaService = {
+  getVideo: (id) => (id === 'simulation' ? simulationVideo : null),
   hasDemoVideo: true,
   stillUrls: ['/img/stills/s1.webp', '/img/stills/s2.webp', '/img/stills/s3.webp', '/img/stills/s4.webp', '/img/stills/s5.webp'],
   posterUrl: '/img/hero-poster.webp',

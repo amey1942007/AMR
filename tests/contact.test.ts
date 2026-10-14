@@ -109,7 +109,7 @@ import { mockMapData } from '@/services/adapters/mapdata.mock';
 import { mockContent } from '@/services/adapters/content.mock';
 import { staticContent } from '@/services/adapters/content.static';
 describe('service mocks', () => {
-  it('map mock is 80×60', async () => expect((await mockMapData.loadReveal()).length).toBe(80 * 60 * 2));
+  it('map mock is 100×70 × 3 layers', async () => expect((await mockMapData.loadReveal()).length).toBe(100 * 70 * 3));
   it('content getLinks', async () => {
     expect((await mockContent.getLinks()).length).toBeGreaterThan(0);
     expect((staticContent.getLinks() as readonly { id: string }[]).map((l) => l.id)).toEqual(['github', 'demo', 'control', 'contact', 'email']);

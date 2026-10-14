@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import Link from '@/components/nav/AppLink';
 import { COMPANY_NAME } from '@/lib/content';
 /** Placeholder logo (brief §16 / D5). Swap for inline public/brand/logo.svg (currentColor) once picked. */
 export function Logo({ height = 28 }: { height?: number }) {
