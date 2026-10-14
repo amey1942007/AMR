@@ -1,4 +1,5 @@
 import { StubPage } from '@/components/StubPage';
+import furniture from '@/data/credits.furniture.json';
 import models from '@/data/credits.models.json';
 import { asset } from '@/lib/asset';
 export const metadata = { title: 'Credits | amrslam.tech', alternates: { canonical: '/credits/' } };
@@ -14,7 +15,7 @@ const assets: Credit[] = [
 ];
 
 export default function Page() {
-  const all: Credit[] = [...(models as Credit[]), ...assets];
+  const all: Credit[] = [...(models as Credit[]), ...(furniture as Credit[]), ...assets];
   return (
     <StubPage eyebrow="Credits" title="Credits">
       <ul className="flex flex-col gap-6">

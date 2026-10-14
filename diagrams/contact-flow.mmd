@@ -1,0 +1,6 @@
+%% /contact Fig. 1: how your message travels.
+flowchart LR
+  F[contact form] --> SB[(Supabase: insert-only)]
+  F -.-> MA[your email app]
+  SB --> A["amey@amrslam.tech"]
+  MA --> A

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef } from 'react';
-import { loadGsap } from '@/lib/motion';
 import type { ReactNode } from 'react';
+import { onReached } from '@/lib/reveal';
 
 /** #info: transparent → --bg at 40%; blocks reveal y40→0 700ms power3.out stagger 80 (opacity-only under RM). */
 /** Client wrapper only (reveal logic). The content is server-rendered (InfoContent) and passed as children → no JS cost. */
@@ -11,20 +11,12 @@ export function InfoSection({ reducedMotion = false, children }: { reducedMotion
     const el = ref.current;
     if (!el || reducedMotion) return;
     const blocks = el.querySelectorAll<HTMLElement>('.reveal');
-    let alive = true, cleanup = () => {};
-    // Initial hidden state is applied by JS only (no-JS: visible).
-    loadGsap().then(({ gsap, ScrollTrigger }) => {
-      if (!alive) return;
-      const pending = Array.from(blocks).filter((b) => b.getBoundingClientRect().top > innerHeight * 0.8);
-      gsap.set(pending, { opacity: 0, y: 40 });
-      const triggers = ScrollTrigger.batch(pending, {
-        start: 'top 80%',
-        once: true,
-        onEnter: (b) => gsap.to(b, { opacity: 1, y: 0, duration: 0.7, ease: 'power3.out', stagger: 0.08, overwrite: true }),
-      });
-      cleanup = () => { triggers.forEach((t) => t.kill()); gsap.set(blocks, { clearProps: 'all' }); };
-    });
-    return () => { alive = false; cleanup(); };
+    // Initial hidden state is applied by JS only (no-JS: visible). CSS transition does the tween (no GSAP).
+    const pending = Array.from(blocks).filter((b) => b.getBoundingClientRect().top > innerHeight * 0.8);
+    pending.forEach((b) => b.classList.add('reveal-pending'));
+    // Reveal state derives from the current position (also after End / anchor jumps), see lib/reveal.
+    const stop = onReached(pending, 0.8, (hit) => hit.forEach((b, i) => { b.style.transitionDelay = `${i * 80}ms`; b.classList.remove('reveal-pending'); }));
+    return () => { stop(); blocks.forEach((b) => { b.classList.remove('reveal-pending'); b.style.transitionDelay = ''; }); };
   }, [reducedMotion]);
 
   return (

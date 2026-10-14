@@ -103,7 +103,7 @@ body { -webkit-font-smoothing: antialiased; font-size: var(--text-body); line-he
 
 .callout-col { top: calc(var(--nav-h) + 10vh); }
 @media (max-height: 760px) { .callout-col { top: calc(var(--nav-h) + 4vh); } }
-@media (max-height: 700px), (max-width: 1023px) { .minimap-canvas { width: 180px !important; height: 135px !important; } }
+@media (max-height: 700px), (max-width: 1023px) { .minimap-canvas { width: 180px !important; height: 126px !important; } }
 
 /* View Transitions: 300 ms cross-document fade between pages (supporting browsers; none under reduced motion). */
 @view-transition { navigation: auto; }
@@ -116,3 +116,16 @@ body { -webkit-font-smoothing: antialiased; font-size: var(--text-body); line-he
 .hero-letter { animation: hero-in var(--dur-hero-letters) var(--ease-expo) both; }
 .cue-bob { animation: cue-bob 1.6s cubic-bezier(.37,0,.63,1) infinite; }
 @media (prefers-reduced-motion: reduce) { .hero-letter, .cue-bob { animation: none; } }
+
+/* Caption safe zone: opaque card + right-side scrim so callouts read over any scene content. */
+.callout-card { background: rgba(11, 11, 16, 0.86); border: 1px solid rgba(255, 255, 255, 0.12); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); overflow-wrap: anywhere; }
+.callout-scrim { background: linear-gradient(to left, rgba(11, 11, 16, 0.7), rgba(11, 11, 16, 0.35) 55%, transparent); transition: opacity 300ms; }
+@media (max-width: 767px) { .callout-card { background: rgba(11, 11, 16, 0.92); } }
+/* v3 minimap per-room completion ticks (6 px squares; violet at ≥ 80 %). */
+.map-tick { width: 6px; height: 6px; border-radius: 1px; border: 1px solid rgba(255, 255, 255, 0.25); transition: background-color 250ms; }
+.map-tick[data-done='true'] { background: #7b2ff7; border-color: #7b2ff7; }
+/* CSS tweens replacing GSAP (JS budget): word split reveal + info block reveal, 700 ms power3.out. */
+.split-w { transition: transform 700ms cubic-bezier(0.215, 0.61, 0.355, 1); will-change: transform; }
+.reveal { transition: opacity 700ms cubic-bezier(0.215, 0.61, 0.355, 1), transform 700ms cubic-bezier(0.215, 0.61, 0.355, 1); }
+.reveal.reveal-pending { opacity: 0; transform: translateY(40px); }
+@media (prefers-reduced-motion: reduce) { .split-w, .reveal { transition: none; } .reveal.reveal-pending { opacity: 1; transform: none; } }

@@ -16,8 +16,9 @@
   --grad-pill: linear-gradient(90deg, #7b2ff7 0%, #c0168f 100%);
   --sky-zenith: #07060c;
   --sky-horizon: #1a0b3d;
-  --cloud-dark: #3a2370;
-  --cloud-light: #e9e3f7;
+  --cloud-dark: #2b1a5e;
+  --cloud-light: #d9ccff;
+  --cloud-rim: #b57bff; /* ui-spec §v3 tokens */
   --grid-free: rgba(255, 255, 255, 0.08);
   --grid-occ: #e81cb0;
   --grid-unknown: transparent;

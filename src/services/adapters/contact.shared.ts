@@ -37,6 +37,7 @@ export function normalise(p: ContactPayload) {
     email: p.email.trim(),
     company: p.company?.trim() || null,
     message: p.message.trim(),
+    subject: p.subject?.trim().slice(0, 200) || null,
     source: (p.source ?? 'home-drawer').slice(0, 100),
     page_url: p.page_url?.slice(0, 2048) ?? null,
     user_agent: p.user_agent?.slice(0, 512) ?? null,

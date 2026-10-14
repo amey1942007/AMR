@@ -1,5 +1,6 @@
-import Link from 'next/link';
-import { StubPage } from '@/components/StubPage';
+import type { Metadata } from 'next';
+import { NotFoundView } from '@/components/utility/NotFoundView';
+export const metadata: Metadata = { title: 'Page not found | AMR', robots: { index: false, follow: false } };
 export default function NotFound() {
-  return <StubPage eyebrow="404" title="Page not found"><p><Link className="underline" href="/">Back to home</Link></p></StubPage>;
+  return <NotFoundView />;
 }

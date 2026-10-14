@@ -6,19 +6,25 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import { asset } from '@/lib/asset';
 
 let loader: GLTFLoader | null = null;
+let ktx2: KTX2Loader | null = null;
+/** One shared KTX2 loader (Basis transcoder in /basis/), also used for the cloud textures. */
+export function getKTX2(gl: WebGLRenderer) {
+  return (ktx2 ??= new KTX2Loader().setTranscoderPath(asset('/basis/')).detectSupport(gl));
+}
 function getLoader(gl: WebGLRenderer) {
   if (loader) return loader;
   const draco = new DRACOLoader().setDecoderPath(asset('/draco/'));
-  const ktx2 = new KTX2Loader().setTranscoderPath(asset('/basis/')).detectSupport(gl);
+  const ktx2 = getKTX2(gl);
   loader = new GLTFLoader().setDRACOLoader(draco).setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
   return loader;
 }
 
-/** Resolves null when the file is missing (→ placeholder), so the real GLB drops in without code changes. */
+/**
+ * Review #14: one GET per model. Paths come from the media manifest (media.static.ts / apartment.json), so there's no
+ * HEAD probe; a missing file (404 or HTML) makes the loader throw → null → placeholder.
+ */
 export async function loadModel(gl: WebGLRenderer, url: string): Promise<Object3D | null> {
   try {
-    const head = await fetch(url, { method: 'HEAD' });
-    if (!head.ok || (head.headers.get('content-type') ?? '').includes('text/html')) return null;
     const g = await getLoader(gl).loadAsync(url);
     return g.scene;
   } catch (e) {

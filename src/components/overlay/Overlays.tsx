@@ -4,19 +4,21 @@ import { S } from '@/lib/scene-state';
 import { useScene, robotScreen, robotPose } from '@/lib/store';
 import { useTick } from '@/components/journey/useTick';
 import { copy } from '@/lib/content';
-import { GRID, NEVER, mappedPct } from '@/lib/grid';
-import { ROOM } from '@/lib/room';
-import { pathCurve } from '@/lib/path';
+import { GRID, NEVER, limOf, mappedPct, roomCompletion, roomEntryU } from '@/lib/grid';
+import { ROOM, ROOMS, roomAt } from '@/lib/room';
+import { pathCurve, robotU } from '@/lib/path';
 import { useServices } from '@/components/providers/ServicesProvider';
 import { Vector3 } from 'three';
 
 const KEYS = ['c1', 'c2', 'c3'] as const;
 
 /** Fixed overlay layer (z 10): callouts + leader, DataChip, Minimap, "Beyond the room." — all aria-hidden (story in SrDescription). */
-export function Overlays({ tier, mobile }: { tier: 'high' | 'low'; mobile: boolean }) {
+/** `live` = the 3D journey runs; without it (no WebGL) the live minimap is hidden and Fallback3D shows the static map image, or nothing. */
+export function Overlays({ tier, mobile, live = true }: { tier: 'high' | 'low'; mobile: boolean; live?: boolean }) {
   const cards = useRef<(HTMLDivElement | null)[]>([]);
   const path = useRef<SVGPathElement>(null);
   const chip = useRef<HTMLDivElement>(null);
+  const scrim = useRef<HTMLDivElement>(null);
   const beyond = useRef<HTMLParagraphElement>(null);
   const mapWrap = useRef<HTMLDivElement>(null);
   useTick(() => {
@@ -30,6 +32,7 @@ export function Overlays({ tier, mobile }: { tier: 'high' | 'low'; mobile: boole
       el.style.visibility = v < 0.005 ? 'hidden' : 'visible';
       if (v > best) { best = v; active = el; }
     });
+    if (scrim.current) scrim.current.style.opacity = String(best);
     if (path.current) {
       const a = active as HTMLDivElement | null;
       if (a && robotScreen.visible && best > 0.05 && !mobile) {
@@ -53,10 +56,11 @@ export function Overlays({ tier, mobile }: { tier: 'high' | 'low'; mobile: boole
         </defs>
         <path ref={path} fill="none" stroke="url(#leader-grad)" strokeWidth="1" style={{ opacity: 0 }} />
       </svg>
+      {!mobile && <div aria-hidden ref={scrim} className="callout-scrim absolute inset-y-0 right-0 w-[min(560px,42vw)]" style={{ opacity: 0 }} />}
       <div className={mobile ? 'absolute inset-x-[var(--gutter)] bottom-[var(--gutter)]' : 'callout-col absolute right-[var(--gutter)] w-[min(360px,28vw)] max-lg:w-[min(360px,30vw)]'}>
-        <div className="relative">
+        <div className="grid">
           {copy.callouts.map((c, i) => (
-            <div key={c.id} ref={(el) => { cards.current[i] = el; }} className={`glass rounded-[var(--radius-card)] p-5 ${i ? 'absolute inset-x-0 top-0' : 'relative'}`} style={{ opacity: 0, visibility: 'hidden' }}>
+            <div key={c.id} ref={(el) => { cards.current[i] = el; }} className="callout-card rounded-[var(--radius-card)] p-5 [grid-area:1/1]" style={{ opacity: 0, visibility: 'hidden' }}>
               <p className="eyebrow text-muted">{c.eyebrow}</p>
               <p className="mt-3 text-[length:var(--text-callout)] font-semibold leading-[1.2] tracking-[-0.01em]">{c.title}</p>
             </div>
@@ -73,7 +77,7 @@ export function Overlays({ tier, mobile }: { tier: 'high' | 'low'; mobile: boole
       </p>
       {!mobile && (
         <div ref={mapWrap} className="absolute right-[var(--gutter)] bottom-[var(--gutter)]" style={{ opacity: 0, visibility: 'hidden' }}>
-          <Minimap />
+          {live && <Minimap />}
         </div>
       )}
     </div>
@@ -93,11 +97,13 @@ function DataChipText({ rays }: { rays: number }) {
   return <span ref={ref}>SIM · v 0.00 m/s · rays {rays} · map 0%</span>;
 }
 
-function Minimap({ width = 240, height = 180 }: { width?: number; height?: number }) {
+function Minimap({ width = 240, height = 168 }: { width?: number; height?: number }) {
   const { mapData } = useServices();
   const canvas = useRef<HTMLCanvasElement>(null);
   const header = useRef<HTMLSpanElement>(null);
-  const [data, setData] = useState<{ reveal: Uint8Array; state: Uint8Array; total: number } | null>(null);
+  const [data, setData] = useState<{ reveal: Uint8Array; state: Uint8Array; room: Uint8Array; total: number; entry: number[] } | null>(null);
+  const ticks = useRef<(HTMLSpanElement | null)[]>([]);
+  const roomFade = useRef(new Float32Array(8).fill(-1));
   const [failed, setFailed] = useState(false);
   const [label, setLabel] = useState('Occupancy map, 0% mapped');
   const last = useRef({ uMap: -1, x: 0, z: 0, flash: new Float32Array(0), drawnLim: -1 });
@@ -105,11 +111,11 @@ function Minimap({ width = 240, height = 180 }: { width?: number; height?: numbe
 
   useEffect(() => {
     mapData.loadReveal().then((buf) => {
-      const n = GRID.w * GRID.h, reveal = buf.slice(0, n), state = buf.slice(n);
+      const n = GRID.w * GRID.h, reveal = buf.slice(0, n), state = buf.slice(n, 2 * n), room = buf.length >= 3 * n ? buf.slice(2 * n, 3 * n) : new Uint8Array(n);
       let total = 0;
       for (let i = 0; i < n; i++) if (reveal[i] !== NEVER) total++;
       last.current.flash = new Float32Array(n);
-      setData({ reveal, state, total });
+      setData({ reveal, state, room, total, entry: roomEntryU() });
     }).catch(() => setFailed(true));
     const c = pathCurve(), v = new Vector3();
     trail.current = Array.from({ length: 200 }, (_, i) => { c.getPointAt(i / 199, v); return { x: v.x, z: v.z }; });
@@ -122,14 +128,24 @@ function Minimap({ width = 240, height = 180 }: { width?: number; height?: numbe
     const moved = Math.abs(robotPose.x - L.x) + Math.abs(robotPose.z - L.z) > 0.005;
     const flashing = L.flash.some((f) => f > 0);
     if (uMap === L.uMap && !moved && !flashing) return;
-    const lim = Math.round(uMap * 254);
+    const lim = limOf(uMap);
+    const fading = roomFade.current.some((f) => f > 0 && t - f < 0.25);
+    if (uMap === L.uMap && !moved && !flashing && !fading) return;
     if (uMap !== L.uMap) {
-      const pct = mappedPct(data.reveal, data.total, uMap);
+      const pct = mappedPct(data.reveal, data.total, uMap, data.room);
       useScene.setState({ mapPct: pct });
-      if (header.current) header.current.textContent = `OCCUPANCY MAP · ${pct}%`;
-      const step = Math.floor(pct / 10) * 10;
-      setLabel((l) => (l.includes(`${step}%`) ? l : `Occupancy map, ${step}% mapped`));
-      if (lim > L.drawnLim) for (let i = 0; i < data.reveal.length; i++) if (data.reveal[i] > L.drawnLim && data.reveal[i] <= lim) L.flash[i] = t;
+      // v3 §4: header shows the robot's current room; ticks fill at ≥ 80 % per room; all reversible from uMap.
+      const cur = ROOMS.find((r) => r.id === roomAt(robotPose.x, robotPose.z));
+      if (header.current) header.current.textContent = `OCCUPANCY MAP · ${cur ? `${cur.label} · ` : ''}${pct}%`;
+      roomCompletion(data.reveal, data.room, uMap).forEach((c, i) => { const el = ticks.current[i]; if (el) el.dataset.done = String(c.pct >= 0.8); });
+      ROOMS.forEach((r) => {
+        const visited = data.entry[r.id] <= Math.max(uMap, robotU.value);
+        if (visited && roomFade.current[r.id] < 0) roomFade.current[r.id] = t;
+        if (!visited) roomFade.current[r.id] = -1;
+      });
+      const step = Math.floor(pct / 10) * 10, room = cur ? `${cur.label.toLowerCase()}, ` : '';
+      setLabel((l) => (l === `Occupancy map, ${room}${step}% mapped` ? l : `Occupancy map, ${room}${step}% mapped`));
+      if (lim > L.drawnLim) for (let i = 0; i < data.reveal.length; i++) if (data.reveal[i] !== NEVER && data.reveal[i] > L.drawnLim && data.reveal[i] <= lim) L.flash[i] = t;
       L.drawnLim = lim; L.uMap = uMap;
     }
     L.x = robotPose.x; L.z = robotPose.z;
@@ -142,7 +158,7 @@ function Minimap({ width = 240, height = 180 }: { width?: number; height?: numbe
     const cw = width / GRID.w, ch = height / GRID.h;
     let still = false;
     for (let i = 0; i < data.reveal.length; i++) {
-      if (data.reveal[i] > lim) continue;
+      if (data.reveal[i] === NEVER || data.reveal[i] > lim) continue;
       const occ = data.state[i] === 2;
       const age = L.flash[i] ? (t - L.flash[i]) / 0.25 : 1;
       if (age < 1) { still = true; g.fillStyle = `rgba(255,255,255,${0.9 * (1 - age)})`; g.fillRect((i % GRID.w) * cw, Math.floor(i / GRID.w) * ch, cw + 0.3, ch + 0.3); }
@@ -151,8 +167,17 @@ function Minimap({ width = 240, height = 180 }: { width?: number; height?: numbe
       if (age >= 1) g.fillRect((i % GRID.w) * cw, Math.floor(i / GRID.w) * ch, cw + 0.3, ch + 0.3);
     }
     if (!still) L.flash.fill(0);
+    // Room outlines on first visit (1px white @25 %, 250 ms fade-in).
+    g.lineWidth = 1;
+    for (const r of ROOMS) {
+      const f = roomFade.current[r.id];
+      if (f < 0) continue;
+      const a = Math.min(1, (t - f) / 0.25) * 0.25;
+      g.strokeStyle = `rgba(255,255,255,${a})`;
+      g.strokeRect(((r.x0 + ROOM.w / 2) / ROOM.w) * width + 0.5, ((r.z0 + ROOM.d / 2) / ROOM.d) * height + 0.5, ((r.x1 - r.x0) / ROOM.w) * width - 1, ((r.z1 - r.z0) / ROOM.d) * height - 1);
+    }
     const sx = (x: number) => ((x + ROOM.w / 2) / ROOM.w) * width, sz = (z: number) => ((z + ROOM.d / 2) / ROOM.d) * height;
-    const k = Math.floor(S.uDrive * 199);
+    const k = Math.floor(robotU.value * 199);
     if (k > 0) {
       const grad = g.createLinearGradient(0, 0, width, 0);
       grad.addColorStop(0, '#7B2FF7'); grad.addColorStop(1, '#E81CB0');
@@ -170,7 +195,10 @@ function Minimap({ width = 240, height = 180 }: { width?: number; height?: numbe
   if (failed) return null;
   return (
     <div role="img" aria-label={label} className="glass rounded-[var(--radius-card)] p-[10px]">
-      <p className="mb-2 font-mono text-[0.7rem] font-medium tracking-[0.12em] uppercase leading-none"><span ref={header}>OCCUPANCY MAP · {data ? '0%' : '—'}</span></p>
+      <p className="mb-1.5 font-mono text-[0.7rem] font-medium tracking-[0.12em] uppercase leading-none"><span ref={header}>OCCUPANCY MAP · {data ? '0%' : '—'}</span></p>
+      <div className="mb-2 flex gap-1" aria-hidden>
+        {ROOMS.map((r, i) => <span key={r.id} title={r.label} ref={(el) => { ticks.current[i] = el; }} data-done="false" className="map-tick" />)}
+      </div>
       <canvas ref={canvas} style={{ width, height, display: 'block', borderRadius: 6 }} className="minimap-canvas" />
     </div>
   );

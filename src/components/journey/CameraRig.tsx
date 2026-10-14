@@ -6,6 +6,7 @@ import { KEYS } from '@/lib/camera-keys';
 import { monotone, smoothstep } from '@/lib/monotone';
 import { S } from '@/lib/scene-state';
 import { asset } from '@/lib/asset';
+import { robotPose } from '@/lib/store';
 
 const STRIDE = 7;
 
@@ -28,6 +29,7 @@ export function CameraRig({ parallax = true }: { parallax?: boolean }) {
     toF: monotone(KEYS.map((k) => k.p), KEYS.map((k) => k.fov)),
   }), []);
   const par = useRef(new Vector2());
+  const follow = useRef(new Vector2());
   const v = useMemo(() => new Vector3(), []), t = useMemo(() => new Vector3(), []);
   useFrame((_, dt) => {
     const p = Math.min(1, Math.max(0, S.p));
@@ -46,8 +48,16 @@ export function CameraRig({ parallax = true }: { parallax?: boolean }) {
     par.current.x = MathUtils.damp(par.current.x, pointer.x * 0.08 * w, 4, dt);
     par.current.y = MathUtils.damp(par.current.y, pointer.y * 0.08 * w, 4, dt);
     camera.position.set(v.x + par.current.x, v.y + par.current.y, v.z);
+    // v3 §3.3 robot follow (p .26–.66): bounded, damped pull of the target toward the robot (runtime, not baked).
+    const fw = 0.3 * smoothstep(0.26, 0.32, p) * (1 - smoothstep(0.6, 0.66, p));
+    follow.current.x = MathUtils.damp(follow.current.x, (robotPose.x - t.x) * fw, 3, dt);
+    follow.current.y = MathUtils.damp(follow.current.y, (robotPose.z - t.z) * fw, 3, dt);
+    t.x += follow.current.x; t.z += follow.current.y;
     camera.lookAt(t);
     const cam = camera as PerspectiveCamera;
+    // Review #4 (375 px): keys are authored for landscape. On portrait keep the *horizontal* FOV of a 1:1 view so
+    // the robot/apartment isn't cropped (hor+), capped at 75°.
+    if (cam.aspect < 1) fov = Math.min(75, 2 * MathUtils.radToDeg(Math.atan(Math.tan(MathUtils.degToRad(fov) / 2) / cam.aspect)));
     if (Math.abs(cam.fov - fov) > 1e-4) { cam.fov = fov; cam.updateProjectionMatrix(); }
   });
   return null;

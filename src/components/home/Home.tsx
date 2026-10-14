@@ -40,7 +40,7 @@ export function Home({ info }: { info: ReactNode }) {
           <HeroLayer />
           {use3D && <JourneyCanvas tier={cap.tier} mobile={cap.mobile} saveData={cap.saveData} onFail={() => setFailed(true)} />}
           {cap.ready && !use3D && <Fallback3D />}
-          {cap.ready && <Overlays tier={cap.tier} mobile={cap.mobile} />}
+          {cap.ready && <Overlays tier={cap.tier} mobile={cap.mobile} live={use3D} />}
           <SrDescription />
           <div id="journey" aria-hidden style={{ height: '460vh' }} />
         </>

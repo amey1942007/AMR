@@ -1,19 +1,33 @@
-import { CatmullRomCurve3, Vector3 } from 'three';
-/** Brief §11.3 waypoints (x, z). */
-export const PATH_POINTS: [number, number][] = [[-2.5, 1.5], [-1.2, 0.6], [0.0, 1.0], [0.5, -0.2], [-0.3, -1.2], [1.0, -2.1], [2.6, -1.4], [2.9, 0.3], [2.0, 1.8]];
-export const STRAFE: [number, number] = [0.44, 0.56];
+import apartment from '@/data/apartment.json';
+import { Vector3 } from 'three';
+import { buildPath, type BuiltPath, type RoutePoint } from './path-core.mjs';
+
+/**
+ * The robot route (apartment.json path.route): straight lines joined by circular fillets (R 0.3–0.45 m) with stop
+ * points (cusps) for the mecanum moves (rotate in place, strafe, reverse). Same builder as scripts/apartment, so
+ * check:path and the map bake see exactly this path.
+ */
+const p = apartment.path as unknown as { route: RoutePoint[]; fillet: { radius: number; minRadius: number } };
+export const ROUTE: BuiltPath = buildPath(p.route, p.fillet);
+/** Route corner points (for the runtime map service). */
+export const PATH_POINTS = p.route.map((r) => r.p);
 export const WHEEL_R = 0.05;
 
-let curve: CatmullRomCurve3 | null = null;
-export function pathCurve() {
-  return (curve ??= new CatmullRomCurve3(PATH_POINTS.map(([x, z]) => new Vector3(x, 0, z)), false, 'centripetal'));
-}
-const v = new Vector3(), tg = new Vector3();
-/** Pose at arc-length u. Model forward = +Z (glTF export, §7.1); yaw = rotation.y so +Z faces the tangent. Strafe holds heading. */
+/** Arc length of the drive path in metres (≈ 20.7 m). */
+export const pathLength = () => ROUTE.length;
+
+/** Pose at normalised arc length u: position and the route's target heading (yaw = rotation.y, model forward = +Z). */
 export function poseAt(u: number) {
-  const c = pathCurve();
-  c.getPointAt(Math.min(1, Math.max(0, u)), v);
-  const hu = u > STRAFE[0] && u < STRAFE[1] ? STRAFE[0] : u;
-  c.getTangentAt(Math.min(0.999, Math.max(0.001, hu)), tg);
-  return { x: v.x, z: v.z, yaw: Math.atan2(tg.x, tg.z) };
+  const q = ROUTE.at(Math.min(1, Math.max(0, u)) * ROUTE.length);
+  return { x: q.x, z: q.z, yaw: q.heading };
 }
+
+/** Curve-like adapter for the trail and minimap (getPointAt on normalised arc length). */
+const adapter = {
+  getPointAt(u: number, target = new Vector3()) { const q = ROUTE.at(Math.min(1, Math.max(0, u)) * ROUTE.length); return target.set(q.x, 0, q.z); },
+  getLength: () => ROUTE.length,
+};
+export const pathCurve = () => adapter;
+
+/** Robot's ACTUAL arc parameter (0..1), written by HeroRobot each frame from the physical motion model. */
+export const robotU = { value: 0 };

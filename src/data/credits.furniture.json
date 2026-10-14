@@ -1,0 +1,124 @@
+[
+  {
+    "what": "sofa_03 (Poly Haven)",
+    "licence": "CC0 1.0",
+    "url": "https://polyhaven.com/a/sofa_03",
+    "licenceUrl": "https://polyhaven.com/license",
+    "file": "/models/furniture/sofa_03.glb",
+    "changes": "colour/ORM textures removed, normal map kept as 1K KTX2, decimated, re-origined, Draco"
+  },
+  {
+    "what": "coffee_table_round_01 (Poly Haven)",
+    "licence": "CC0 1.0",
+    "url": "https://polyhaven.com/a/coffee_table_round_01",
+    "licenceUrl": "https://polyhaven.com/license",
+    "file": "/models/furniture/coffee_table_round_01.glb",
+    "changes": "colour/ORM textures removed, normal map kept as 1K KTX2, decimated, re-origined, Draco"
+  },
+  {
+    "what": "mid_century_lounge_chair (Poly Haven)",
+    "licence": "CC0 1.0",
+    "url": "https://polyhaven.com/a/mid_century_lounge_chair",
+    "licenceUrl": "https://polyhaven.com/license",
+    "file": "/models/furniture/mid_century_lounge_chair.glb",
+    "changes": "colour/ORM textures removed, normal map kept as 1K KTX2, decimated, re-origined, Draco"
+  },
+  {
+    "what": "side_table_01 (Poly Haven)",
+    "licence": "CC0 1.0",
+    "url": "https://polyhaven.com/a/side_table_01",
+    "licenceUrl": "https://polyhaven.com/license",
+    "file": "/models/furniture/side_table_01.glb",
+    "changes": "colour/ORM textures removed, normal map kept as 1K KTX2, decimated, re-origined, Draco"
+  },
+  {
+    "what": "dining_table (Poly Haven)",
+    "licence": "CC0 1.0",
+    "url": "https://polyhaven.com/a/dining_table",
+    "licenceUrl": "https://polyhaven.com/license",
+    "file": "/models/furniture/dining_table.glb",
+    "changes": "colour/ORM textures removed, normal map kept as 1K KTX2, decimated, re-origined, Draco"
+  },
+  {
+    "what": "plastic_monobloc_chair_01 (Poly Haven)",
+    "licence": "CC0 1.0",
+    "url": "https://polyhaven.com/a/plastic_monobloc_chair_01",
+    "licenceUrl": "https://polyhaven.com/license",
+    "file": "/models/furniture/plastic_monobloc_chair_01.glb",
+    "changes": "colour/ORM textures removed, normal map kept as 1K KTX2, decimated, re-origined, Draco"
+  },
+  {
+    "what": "potted_plant_01 (Poly Haven)",
+    "licence": "CC0 1.0",
+    "url": "https://polyhaven.com/a/potted_plant_01",
+    "licenceUrl": "https://polyhaven.com/license",
+    "file": "/models/furniture/potted_plant_01.glb",
+    "changes": "colour/ORM textures removed, normal map kept as 1K KTX2, decimated, re-origined, Draco"
+  },
+  {
+    "what": "bar_chair_round_01 (Poly Haven)",
+    "licence": "CC0 1.0",
+    "url": "https://polyhaven.com/a/bar_chair_round_01",
+    "licenceUrl": "https://polyhaven.com/license",
+    "file": "/models/furniture/bar_chair_round_01.glb",
+    "changes": "colour/ORM textures removed, normal map kept as 1K KTX2, decimated, re-origined, Draco"
+  },
+  {
+    "what": "potted_plant_04 (Poly Haven)",
+    "licence": "CC0 1.0",
+    "url": "https://polyhaven.com/a/potted_plant_04",
+    "licenceUrl": "https://polyhaven.com/license",
+    "file": "/models/furniture/potted_plant_04.glb",
+    "changes": "colour/ORM textures removed, normal map kept as 1K KTX2, decimated, re-origined, Draco"
+  },
+  {
+    "what": "metal_office_desk (Poly Haven)",
+    "licence": "CC0 1.0",
+    "url": "https://polyhaven.com/a/metal_office_desk",
+    "licenceUrl": "https://polyhaven.com/license",
+    "file": "/models/furniture/metal_office_desk.glb",
+    "changes": "colour/ORM textures removed, normal map kept as 1K KTX2, decimated, re-origined, Draco"
+  },
+  {
+    "what": "modern_arm_chair_01 (Poly Haven)",
+    "licence": "CC0 1.0",
+    "url": "https://polyhaven.com/a/modern_arm_chair_01",
+    "licenceUrl": "https://polyhaven.com/license",
+    "file": "/models/furniture/modern_arm_chair_01.glb",
+    "changes": "colour/ORM textures removed, normal map kept as 1K KTX2, decimated, re-origined, Draco"
+  },
+  {
+    "what": "painted_wooden_nightstand (Poly Haven)",
+    "licence": "CC0 1.0",
+    "url": "https://polyhaven.com/a/painted_wooden_nightstand",
+    "licenceUrl": "https://polyhaven.com/license",
+    "file": "/models/furniture/painted_wooden_nightstand.glb",
+    "changes": "colour/ORM textures removed, normal map kept as 1K KTX2, decimated, re-origined, Draco"
+  },
+  {
+    "what": "Furniture Kit by Kenney (cabinetTelevision, televisionModern, rugRectangle, kitchenCabinet, kitchenSink, kitchenStove, kitchenFridgeLarge, kitchenBar, bathtub, toilet, bathroomSink, bathroomCabinet, bedSingle, bedDouble, bookcaseClosedWide, cabinetBed)",
+    "licence": "CC0 1.0",
+    "url": "https://kenney.nl/assets/furniture-kit",
+    "licenceUrl": "http://creativecommons.org/publicdomain/zero/1.0/",
+    "author": "Kenney (www.kenney.nl)",
+    "files": [
+      "/models/furniture/cabinetTelevision.glb",
+      "/models/furniture/televisionModern.glb",
+      "/models/furniture/rugRectangle.glb",
+      "/models/furniture/kitchenCabinet.glb",
+      "/models/furniture/kitchenSink.glb",
+      "/models/furniture/kitchenStove.glb",
+      "/models/furniture/kitchenFridgeLarge.glb",
+      "/models/furniture/kitchenBar.glb",
+      "/models/furniture/bathtub.glb",
+      "/models/furniture/toilet.glb",
+      "/models/furniture/bathroomSink.glb",
+      "/models/furniture/bathroomCabinet.glb",
+      "/models/furniture/bedSingle.glb",
+      "/models/furniture/bedDouble.glb",
+      "/models/furniture/bookcaseClosedWide.glb",
+      "/models/furniture/cabinetBed.glb"
+    ],
+    "changes": "re-origined, Draco"
+  }
+]

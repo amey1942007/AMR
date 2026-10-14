@@ -9,10 +9,11 @@ import { useUI, uiRefs } from '@/lib/ui-store';
 import { useServices } from '@/components/providers/ServicesProvider';
 import { usePathname } from 'next/navigation';
 import { useScene } from '@/lib/store';
+import { MAINTENANCE } from '@/lib/maintenance';
 
 /** Fixed top bar. Home: theme from the scroll store (navDark at p ≥ .18, hysteresis). Sub-pages are dark. */
 export function TopBar() {
-  const { config } = useServices();
+  const { config, auth } = useServices();
   const navDark = useScene((s) => s.navDark);
   const theme = usePathname() === '/' && !navDark ? 'light' : 'dark';
   const dialog = useUI((s) => s.dialog);
@@ -28,12 +29,15 @@ export function TopBar() {
       <LoadBar />
       <div className="relative flex h-[var(--nav-h)] items-center justify-between px-[var(--gutter)]">
         <Logo />
+        {MAINTENANCE ? null : (
         <nav aria-label="Primary" className="flex items-center gap-3">
           <span className="hidden lg:contents">
           {config.controlPanelUrl ? (
             <PillButton kind="ghost" href={config.controlPanelUrl} icon="external">
               Control panel
             </PillButton>
+          ) : auth.isAvailable() ? (
+            <PillButton kind="ghost" href="/login/">Control panel</PillButton>
           ) : (
             <PillButton kind="ghost" onClick={() => showToast('Live control panel: coming soon')}>
               Control panel
@@ -54,6 +58,7 @@ export function TopBar() {
             onClick={() => (dialog === 'menu' ? closeDialog() : openDialog('menu', uiRefs.menuButton))}
           />
         </nav>
+        )}
       </div>
     </header>
   );
