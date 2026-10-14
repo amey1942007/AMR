@@ -53,7 +53,7 @@ export function MenuOverlay() {
             {config.controlPanelUrl ? (
               <PillButton kind="ghost" href={config.controlPanelUrl} icon="external">Control panel</PillButton>
             ) : (
-              <PillButton kind="ghost" onClick={() => showToast('Control panel coming soon.')}>Control panel</PillButton>
+              <PillButton kind="ghost" onClick={() => showToast('Live control panel: coming soon')}>Control panel</PillButton>
             )}
           </div>
         </nav>

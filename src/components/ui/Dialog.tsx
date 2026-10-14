@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, type ReactNode } from 'react';
+import { getLenis } from '@/lib/lenis-ref';
 
 const FOCUSABLE =
   'a[href],button:not([disabled]),input:not([disabled]):not([tabindex="-1"]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -37,7 +38,8 @@ export function Dialog({ open, onClose, labelledBy, id, className, initialFocus,
     const bg = BACKGROUND_IDS.map((i) => document.getElementById(i)).filter(Boolean) as HTMLElement[];
     bg.forEach((el) => el.setAttribute('inert', ''));
     const prevOverflow = document.documentElement.style.overflow;
-    document.documentElement.style.overflow = 'hidden'; // lenis.stop() joins this in M1
+    document.documentElement.style.overflow = 'hidden';
+    getLenis()?.stop();
     const t = window.setTimeout(() => {
       const target = initialFocus?.() ?? root.querySelector<HTMLElement>(FOCUSABLE);
       target?.focus();
@@ -64,6 +66,7 @@ export function Dialog({ open, onClose, labelledBy, id, className, initialFocus,
       document.removeEventListener('keydown', onKey);
       bg.forEach((el) => el.removeAttribute('inert'));
       document.documentElement.style.overflow = prevOverflow;
+      getLenis()?.start();
       // Defer so a dialog opened by this close (Menu → Contact) can claim focus first.
       window.setTimeout(() => {
         if (!document.querySelector('[role="dialog"][data-open="true"]')) returnFocus?.()?.focus();

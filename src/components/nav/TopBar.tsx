@@ -6,10 +6,14 @@ import { MenuButton } from './MenuButton';
 import { Mail } from '@/components/icons';
 import { useUI, uiRefs } from '@/lib/ui-store';
 import { useServices } from '@/components/providers/ServicesProvider';
+import { usePathname } from 'next/navigation';
+import { useScene } from '@/lib/store';
 
-/** Fixed top bar. theme comes from the scroll store in M1 (navDark at p ≥ .18); M0 renders 'light'. */
-export function TopBar({ theme = 'light' }: { theme?: 'light' | 'dark' }) {
+/** Fixed top bar. Home: theme from the scroll store (navDark at p ≥ .18, hysteresis). Sub-pages are dark. */
+export function TopBar() {
   const { config } = useServices();
+  const navDark = useScene((s) => s.navDark);
+  const theme = usePathname() === '/' && !navDark ? 'light' : 'dark';
   const dialog = useUI((s) => s.dialog);
   const openDialog = useUI((s) => s.openDialog);
   const closeDialog = useUI((s) => s.closeDialog);
@@ -19,7 +23,8 @@ export function TopBar({ theme = 'light' }: { theme?: 'light' | 'dark' }) {
 
   return (
     <header id="site-header" className="fixed inset-x-0 top-0" style={{ zIndex: 50, color: fg, transition: 'color var(--dur-theme) var(--ease-io)' }}>
-      <div className="flex h-[var(--nav-h)] items-center justify-between px-[var(--gutter)]">
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[calc(var(--nav-h)+40px)]" style={{ background: 'linear-gradient(var(--bg) 0, transparent)', opacity: theme === 'dark' ? 0.6 : 0, transition: 'opacity var(--dur-theme) var(--ease-io)' }} />
+      <div className="relative flex h-[var(--nav-h)] items-center justify-between px-[var(--gutter)]">
         <Logo />
         <nav aria-label="Primary" className="flex items-center gap-3">
           <span className="hidden lg:contents">
@@ -28,7 +33,7 @@ export function TopBar({ theme = 'light' }: { theme?: 'light' | 'dark' }) {
               Control panel
             </PillButton>
           ) : (
-            <PillButton kind="ghost" onClick={() => showToast('Control panel coming soon.')}>
+            <PillButton kind="ghost" onClick={() => showToast('Live control panel: coming soon')}>
               Control panel
             </PillButton>
           )}
