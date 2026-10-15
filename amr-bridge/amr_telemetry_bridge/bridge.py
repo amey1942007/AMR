@@ -9,10 +9,12 @@ Network path (preferred):
   Pi ── Tailscale ── laptop/ops   (management)
   Pi ── Cloudflare Tunnel / Supabase Realtime ── browsers on /control
 
-Env:
+Env (see /etc/amr-bridge.env — also loaded by amr_bridge.launch.py):
   AMR_BOT_ID=amr4|hardware-bot
   AMR_SUPABASE_URL=https://….supabase.co
-  AMR_SUPABASE_SERVICE_KEY=…          # service role — bridge only, never in the site
+  AMR_SUPABASE_KEY=…                  # publishable/anon key (Realtime + touch RPC)
+  AMR_BRIDGE_TOKEN=…                  # shared secret → public.touch_amr_bot
+  AMR_SUPABASE_SERVICE_KEY=…          # optional legacy; not required
   AMR_DASHBOARD_URL=http://127.0.0.1:8080
   AMR_CAMERA_URL=                     # optional public MJPEG (CF tunnel)
   AMR_CAMERA_JPEG_MAX_KB=24           # inline JPEG budget when scraping /camera.mjpg
@@ -87,11 +89,12 @@ class DashboardClient:
 class RealtimeHub:
     """Thin sync supabase-py wrapper used from the asyncio loop via to_thread."""
 
-    def __init__(self, url: str, key: str, bot_id: str, on_command):
+    def __init__(self, url: str, key: str, bot_id: str, on_command, bridge_token: str | None):
         from supabase import create_client
 
         self._bot_id = bot_id
         self._on_command = on_command
+        self._bridge_token = bridge_token
         self._client = create_client(url, key)
         self._channel = self._client.channel(channel_name(bot_id))
         self._ready = threading.Event()
@@ -129,15 +132,15 @@ class RealtimeHub:
                 log.debug("broadcast %s failed: %s", event, exc)
 
     def touch_bot_row(self, camera_url: str | None) -> None:
+        if not self._bridge_token:
+            return
         try:
-            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            self._client.table("amr_bots").update({
-                "last_seen_at": now,
-                "bridge_version": BRIDGE_VERSION,
-                "online": True,
-                "camera_url": camera_url,
-                "updated_at": now,
-            }).eq("id", self._bot_id).execute()
+            self._client.rpc("touch_amr_bot", {
+                "p_bot_id": self._bot_id,
+                "p_token": self._bridge_token,
+                "p_bridge_version": BRIDGE_VERSION,
+                "p_camera_url": camera_url,
+            }).execute()
         except Exception as exc:
             log.debug("amr_bots touch skipped: %s", exc)
 
@@ -153,7 +156,8 @@ class Bridge:
         self,
         bot_id: str,
         supabase_url: str,
-        service_key: str,
+        api_key: str,
+        bridge_token: str | None,
         dashboard_url: str,
         camera_url: str | None,
         camera_jpeg_max_kb: int,
@@ -162,7 +166,8 @@ class Bridge:
             raise SystemExit(f"AMR_BOT_ID must be one of {BOT_IDS}")
         self.bot_id = bot_id
         self.supabase_url = supabase_url.rstrip("/")
-        self.service_key = service_key
+        self.api_key = api_key
+        self.bridge_token = bridge_token
         self.dash = DashboardClient(dashboard_url)
         self.camera_url = camera_url
         self.camera_jpeg_max_kb = camera_jpeg_max_kb
@@ -181,7 +186,7 @@ class Bridge:
     async def start(self) -> None:
         self._loop = asyncio.get_running_loop()
         self._hub = RealtimeHub(
-            self.supabase_url, self.service_key, self.bot_id, self._queue_command,
+            self.supabase_url, self.api_key, self.bot_id, self._queue_command, self.bridge_token,
         )
         await asyncio.to_thread(self._hub.connect)
         await asyncio.gather(
@@ -368,19 +373,26 @@ def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="AMR cloud telemetry bridge")
     p.add_argument("--bot-id", default=_env("AMR_BOT_ID", "amr4"))
     p.add_argument("--supabase-url", default=_env("AMR_SUPABASE_URL") or _env("NEXT_PUBLIC_SUPABASE_URL"))
-    p.add_argument("--service-key", default=_env("AMR_SUPABASE_SERVICE_KEY"))
+    p.add_argument(
+        "--api-key",
+        default=_env("AMR_SUPABASE_KEY")
+        or _env("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY")
+        or _env("AMR_SUPABASE_SERVICE_KEY"),
+    )
+    p.add_argument("--bridge-token", default=_env("AMR_BRIDGE_TOKEN"))
     p.add_argument("--dashboard", default=_env("AMR_DASHBOARD_URL", "http://127.0.0.1:8080"))
     p.add_argument("--camera-url", default=_env("AMR_CAMERA_URL"))
     p.add_argument("--camera-jpeg-max-kb", type=int, default=int(_env("AMR_CAMERA_JPEG_MAX_KB", "24") or 24))
     args = p.parse_args(argv)
 
-    if not args.supabase_url or not args.service_key:
-        raise SystemExit("AMR_SUPABASE_URL and AMR_SUPABASE_SERVICE_KEY are required")
+    if not args.supabase_url or not args.api_key:
+        raise SystemExit("AMR_SUPABASE_URL and AMR_SUPABASE_KEY are required")
 
     bridge = Bridge(
         bot_id=args.bot_id,
         supabase_url=args.supabase_url,
-        service_key=args.service_key,
+        api_key=args.api_key,
+        bridge_token=args.bridge_token,
         dashboard_url=args.dashboard,
         camera_url=args.camera_url,
         camera_jpeg_max_kb=args.camera_jpeg_max_kb,
