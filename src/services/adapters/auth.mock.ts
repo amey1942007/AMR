@@ -1,10 +1,12 @@
 import type { AuthResult, AuthService, Session } from '../types';
 
 export const MOCK_USER = 'demo@amrslam.tech';
+/** Invite-only username mapped to MOCK_USER when the mock auth adapter is active. */
+export const MOCK_USERNAME = 'demo';
 const MOCK_PASSWORD = 'demo-password';
 
 /**
- * login-spec §1.6 mock: demo@amrslam.tech / demo-password → ok after 600 ms; anything else → invalid.
+ * login-spec §1.6 mock: username `demo` → demo@amrslam.tech / demo-password → ok after 600 ms; anything else → invalid.
  * `?mock=locked` → rate_limited 300 s, `?mock=network` → network, `?mock=slow` → 4 s. Session lives in memory only
  * (nothing is written to storage, so a reload signs you out).
  */

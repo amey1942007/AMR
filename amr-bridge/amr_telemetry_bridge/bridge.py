@@ -213,11 +213,28 @@ class Bridge:
                 return
             if typ == "estop":
                 await self.dash.post("/api/estop")
-            elif typ == "nudge":
+            elif typ in ("nudge", "drive"):
                 await self.dash.post("/api/nudge", {
                     "lin": float(cmd.get("lin", 0)),
                     "ang": float(cmd.get("ang", 0)),
                 })
+            elif typ == "joy":
+                # Prefer web_gamepad_node HTTP fallback when configured.
+                gamepad = os.environ.get("AMR_GAMEPAD_URL", "").rstrip("/")
+                axes = cmd.get("axes") or [0.0] * 8
+                buttons = int(cmd.get("buttons") or 0)
+                if gamepad:
+                    await self.dash._http.post(
+                        f"{gamepad}/api/joy",
+                        json={"a": list(axes)[:8], "b": buttons},
+                    )
+                else:
+                    # Differential approx from left stick: axes[1]=fwd, axes[0]=yaw
+                    ax = list(axes) + [0.0] * 8
+                    lin = max(-0.4, min(0.4, -float(ax[1]) * 0.35))
+                    ang = max(-1.0, min(1.0, -float(ax[0]) * 0.9))
+                    if abs(lin) > 0.02 or abs(ang) > 0.02:
+                        await self.dash.post("/api/nudge", {"lin": lin, "ang": ang})
             elif typ == "nav_goal":
                 await self.dash.post("/api/nav_goal", {
                     "x": float(cmd.get("x", 0)),
@@ -231,6 +248,27 @@ class Bridge:
                 if rank < 2:
                     return
                 await self.dash.post("/api/save_map", {"name": cmd.get("name")})
+            elif typ == "run_tool":
+                if rank < 1:
+                    return
+                await self.dash.post("/api/run", {
+                    "tool": cmd.get("tool"),
+                    "params": cmd.get("params") or {},
+                })
+            elif typ == "stop_tool":
+                await self.dash.post("/api/stop")
+            elif typ == "blacklist":
+                if rank < 1:
+                    return
+                if cmd.get("action") == "clear":
+                    await self.dash.post("/api/blacklist", {"action": "clear"})
+                else:
+                    await self.dash.post("/api/blacklist", {
+                        "x": float(cmd.get("x", 0)),
+                        "y": float(cmd.get("y", 0)),
+                        "radius": float(cmd.get("radius", 0.8)),
+                        "duration": float(cmd.get("duration", 300)),
+                    })
         except Exception as exc:
             log.warning("command failed: %s", exc)
 
@@ -290,6 +328,13 @@ class Bridge:
             })
             return
         if event.get("t") == "log":
+            await self._broadcast("log", {
+                "botId": self.bot_id,
+                "ts": int(time.time() * 1000),
+                "time": event.get("time") or time.strftime("%H:%M:%S"),
+                "level": event.get("level") or "info",
+                "text": event.get("text") or "",
+            })
             return
         if "pose" not in event:
             return
@@ -324,7 +369,7 @@ class Bridge:
             "frontier": event.get("frontier") if mode == "full" else {"zones": [], "queue": []},
             "sys": event.get("sys"),
             "tool": event.get("tool"),
-            "vision": bool(event.get("yolo_det") or event.get("sem")),
+            "vision": bool(event.get("vision") or event.get("yolo_det") or event.get("sem")),
             "saving": event.get("saving"),
             "cameraUrl": self.camera_url,
             "scan": event.get("scan") if mode == "full" else [],
