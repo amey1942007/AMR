@@ -48,7 +48,9 @@ Production Pages builds bake in the project URL + **publishable** key (safe for 
 | Contact form | `public.contact_submissions` (anon insert-only) |
 | Simulation video | `public.site_videos` row `id = 'simulation'`; set `youtube_id` / `vimeo_id` / file `sources`, then `published = true` |
 
-**Control panel flow:** nav **Control panel** → `/login/` → after sign-in → `/control/` (coming-soon stub, same theme). Dashboard → **Authentication → URL configuration**: Site URL `https://amrslam.tech`, redirect allow `https://amrslam.tech/**`.
+**Control panel flow:** nav **Control panel** → `/login/` → after sign-in → `/control/` (live 3D remote panel for both bots). Hosted on **amrslam.tech/control** (same-origin auth; better than a separate bot subdomain for this static+Supabase setup). Dashboard → **Authentication → URL configuration**: Site URL `https://amrslam.tech`, redirect allow `https://amrslam.tech/**`.
+
+**Remote ops (amr-bridge):** apply `supabase/migrations/20261015130000_operator_profiles_and_bots.sql`, set `operator_profiles.authority_rank` for admins (0 viewer … 3 owner), run `amr-bridge/` on each Pi (Tailscale + optional Cloudflare Tunnel for camera). See `amr-bridge/README.md`.
 
 ## Contact adapter (`NEXT_PUBLIC_CONTACT_ADAPTER`)
 `supabase | http | mailto` (+ `mock` in dev/test only; a production build never uses the mock). Unset → mock in dev; production → `supabase` if URL + **publishable** key are set, else `mailto` (form hidden, mailto button). Secret/service-role keys are rejected. 10 s request timeout. supabase-js loads on first submit.
