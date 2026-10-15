@@ -1,5 +1,5 @@
-# Deploys the static export to GitHub Pages at https://amey1942007.github.io/AMR/
-# Repo Settings → Pages → Source: "GitHub Actions".
+# Deploys the static export to GitHub Pages at https://amrslam.tech
+# (custom domain; github.io/AMR redirects there). Repo Settings → Pages → Source: "GitHub Actions".
 name: Deploy to GitHub Pages
 on:
   push:
@@ -19,21 +19,22 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run lint && npm run typecheck && npm test
+      # Custom domain serves at site root — do not set NEXT_PUBLIC_BASE_PATH=/AMR
+      # (that prefix made CSS/JS 404 at amrslam.tech while HTML still loaded).
       - run: npm run build
         env:
-          NEXT_PUBLIC_BASE_PATH: /AMR
-          NEXT_PUBLIC_SITE_URL: https://amey1942007.github.io # Next appends basePath
+          NEXT_PUBLIC_SITE_URL: https://amrslam.tech
           # Optional repo variables (Settings → Secrets and variables → Actions → Variables):
           NEXT_PUBLIC_CONTACT_ADAPTER: ${{ vars.NEXT_PUBLIC_CONTACT_ADAPTER }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
           NEXT_PUBLIC_CONTACT_ENDPOINT: ${{ vars.NEXT_PUBLIC_CONTACT_ENDPOINT }}
           NEXT_PUBLIC_CONTROL_PANEL_URL: ${{ vars.NEXT_PUBLIC_CONTROL_PANEL_URL }}
-      - run: rm -f out/CNAME # the custom-domain CNAME doesn't apply to the github.io project site
+      # Keep public/CNAME so Pages stays bound to amrslam.tech
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

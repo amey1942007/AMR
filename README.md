@@ -47,24 +47,19 @@ npm run dev                  # http://localhost:3000
 - HDRI: 1K `.hdr` first, then 2K log-encoded WebP (`scripts/compress_hdri.py`) on the high tier.
 - Room/props: procedural stand-ins until `room_shell.glb` / `props.glb` exist. See `CREDITS.md`.
 
-## Deploy to GitHub Pages (https://amey1942007.github.io/AMR/)
-The workflow `.github/workflows/pages.yml` (it replaces the old `deploy.yml`, so only one workflow deploys) runs lint, typecheck and unit tests, builds with `NEXT_PUBLIC_BASE_PATH=/AMR` and deploys `out/` on every push to `main`.
-1. On GitHub: repo **Settings → Pages → Source: GitHub Actions**.
+## Deploy to GitHub Pages (https://amrslam.tech)
+The workflow `.github/workflows/pages.yml` runs lint, typecheck and unit tests, builds for the **custom domain root** (`NEXT_PUBLIC_SITE_URL=https://amrslam.tech`, empty `NEXT_PUBLIC_BASE_PATH`), and deploys `out/` on every push to `main`. With a custom domain, GitHub serves the site at `/` — do **not** set `NEXT_PUBLIC_BASE_PATH=/AMR` or CSS/JS will 404 while HTML still loads.
+1. On GitHub: repo **Settings → Pages → Source: GitHub Actions**, Custom domain: `amrslam.tech` (CNAME is in `public/CNAME`).
 2. Push to `main` (or run the workflow by hand from the **Actions** tab).
 3. Optional repo variables/secrets: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_CONTACT_ADAPTER`.
 
-`NEXT_PUBLIC_BASE_PATH` is empty by default, so `npm run dev` and a normal `npm run build` still serve at `/`.
-To test the Pages build locally on Windows (PowerShell, from D:\…\site):
+`NEXT_PUBLIC_BASE_PATH` is empty by default, so `npm run dev` and `npm run build` serve at `/` (correct for amrslam.tech). Asset URLs go through `asset()` (`src/lib/asset.ts`). `public/.nojekyll` stops Pages from hiding `_next/`. `public/sitemap.xml` and `robots.txt` name amrslam.tech.
+
+Only if you temporarily need the old project-pages URL (`…github.io/AMR/`) without a custom domain:
 ```powershell
 $env:NEXT_PUBLIC_BASE_PATH = "/AMR"; $env:NEXT_PUBLIC_SITE_URL = "https://amey1942007.github.io"
 npm run build
-Remove-Item Env:NEXT_PUBLIC_BASE_PATH; Remove-Item Env:NEXT_PUBLIC_SITE_URL
-New-Item -ItemType Directory -Force ..\pages-test | Out-Null
-Remove-Item -Recurse -Force ..\pages-test\AMR -ErrorAction SilentlyContinue
-Copy-Item -Recurse out ..\pages-test\AMR
-npx serve ..\pages-test -l 4180     # open http://localhost:4180/AMR/
 ```
-Run `npm run build` again without the variable before serving at `/`. Asset URLs in code go through `asset()` (`src/lib/asset.ts`) so they pick up the base path; `public/.nojekyll` stops Pages from hiding `_next/`. `public/sitemap.xml` and `robots.txt` still name amrslam.tech (the production domain).
 
 ## Content-Security-Policy and `'unsafe-eval'` on the home page
 `scripts/csp-meta.mjs` (postbuild) adds a hashed CSP meta tag to every page and writes `out/_headers` (with `frame-ancestors 'none'`) for hosts that support header files. **GitHub Pages ignores `_headers`**, and a `<meta>` CSP can't carry `frame-ancestors`, so on GitHub Pages the site has **no clickjacking (frame-ancestors / X-Frame-Options) protection**. That needs a header-capable host or a CDN in front (e.g. Cloudflare) for amrslam.tech.
