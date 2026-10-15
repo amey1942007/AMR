@@ -2,6 +2,10 @@
 
 Cloud telemetry bridge for [Ros_lidar_bot](https://github.com/amey1942007/Ros_lidar_bot) → Supabase Realtime → [amrslam.tech/control](https://amrslam.tech/control/).
 
+> **Integrating into the robot?** Start here:  
+> **[`AGENT_SETUP_AND_INTEGRATION.md`](./AGENT_SETUP_AND_INTEGRATION.md)** — full setup + launch include + verify checklist for another agent.  
+> Short include snippet: [`launch/INCLUDE_IN_ROSLIDAR.md`](./launch/INCLUDE_IN_ROSLIDAR.md).
+
 ## Supabase (already applied on project **AMR**)
 
 | Piece | Status |
