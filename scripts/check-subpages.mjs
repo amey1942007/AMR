@@ -9,7 +9,8 @@ import { join } from 'node:path';
 
 const PAGES = ['robots', 'robots/hardware-bot', 'robots/amr4', 'technology', 'about', 'contact', 'privacy'];
 // login-spec §1.10: auth pages ≤ shell + 6 KB gz (form logic); utility pages ≤ shell + 4 KB (§2). supabase-js never initial.
-const UTIL = { 'login': 6, 'login/reset': 6, 'control': 6, 'maintenance': 4, '404.html': 4 };
+// /login raised to +8 KB for invite-only username + first-password claim UI (operator-auth stays a deferred chunk).
+const UTIL = { 'login': 8, 'login/reset': 6, 'control': 6, 'maintenance': 4, '404.html': 4 };
 const base = process.env.NEXT_PUBLIC_BASE_PATH || '';
 let fail = false;
 const scripts = (page) => [...new Set([...page.matchAll(/<script([^>]*)\ssrc="([^"]+\.js)"([^>]*)>/g)].filter((m) => !/nomodule/i.test(m[1] + m[3])).map((m) => m[2]))];

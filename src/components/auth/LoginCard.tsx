@@ -11,7 +11,7 @@ export function LoginCard({ redirectTarget }: { redirectTarget: string }) {
       <div className="mb-6 flex flex-col items-center gap-3 text-center">
         <Logo height={28} />
         <h1 className="text-[length:var(--text-h3)] font-semibold text-white">Sign in</h1>
-        <p className="text-[length:var(--text-small)] text-muted">Control panel access for the AMR team.</p>
+        <p className="text-[length:var(--text-small)] text-muted">Invite-only control panel access for the AMR team.</p>
       </div>
       {available ? <LoginForm redirectTarget={redirectTarget} /> : <LoginUnavailable />}
     </div>
