@@ -3,7 +3,6 @@ import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
 import { asset } from '@/lib/asset';
 import { useAuth } from '@/lib/useAuth';
-import { AuthGuard } from '@/components/auth/AuthGuard';
 import { PillButton } from '@/components/nav/PillButton';
 import { readConfig } from '@/lib/config';
 import { getAuthClient } from '@/services/supabase-client';
@@ -175,11 +174,7 @@ function Inner() {
   );
 }
 
-/** Live remote control panel (replaces coming-soon stub). Hosted at /control on amrslam.tech. */
+/** Live remote control panel. Lazy-loaded from ControlStub (AuthGuard wraps outside). */
 export function ControlPanel() {
-  return (
-    <AuthGuard>
-      <Inner />
-    </AuthGuard>
-  );
+  return <Inner />;
 }
