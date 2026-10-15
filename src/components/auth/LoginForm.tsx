@@ -95,17 +95,43 @@ export function LoginForm({ redirectTarget }: { redirectTarget: string }) {
     const ue = validateUsername(username);
     setUErr(ue);
     if (ue) { setSummary(true); return; }
+    setSummary(false); setMsg(''); setPhase('loading');
+
+    // Dev mock adapter: no Edge Function — only the demo username is authorised.
+    if (auth.name === 'mock') {
+      const { MOCK_USERNAME } = await import('@/services/adapters/auth.mock');
+      const u = username.trim().toLowerCase();
+      await new Promise<void>((r) => setTimeout(r, 200));
+      if (u !== MOCK_USERNAME) {
+        setPhase('invalid');
+        setMsg('This username is not authorised.');
+        setUErr('This username is not authorised.');
+        setSummary(true);
+        setWait(recordFailure(kv.current));
+        return;
+      }
+      setUsername(MOCK_USERNAME);
+      setPhase('idle');
+      setStep('password');
+      return;
+    }
+
     if (!cfg.supabaseUrl || !cfg.supabaseKey) {
       failAuth('unavailable');
       return;
     }
-    setSummary(false); setMsg(''); setPhase('loading');
     const { operatorStatus } = await operatorAuth();
     const st = await operatorStatus(cfg.supabaseUrl, cfg.supabaseKey, username.trim().toLowerCase());
     if (st.status !== 'ok') {
-      failAuth(st.status === 'network' || st.status === 'unavailable' ? st.status : 'invalid', {
-        text: 'This username is not authorised.',
-      });
+      if (st.status === 'network' || st.status === 'unavailable') {
+        failAuth(st.status);
+        return;
+      }
+      setPhase('invalid');
+      setMsg('This username is not authorised.');
+      setUErr('This username is not authorised.');
+      setSummary(true);
+      setWait(recordFailure(kv.current));
       return;
     }
     setUsername(st.username);
@@ -116,12 +142,17 @@ export function LoginForm({ redirectTarget }: { redirectTarget: string }) {
   async function submitPassword(e: FormEvent) {
     e.preventDefault();
     if (phase === 'loading' || wait > 0) return;
-    if (!cfg.supabaseUrl || !cfg.supabaseKey) {
+    const isMock = auth.name === 'mock';
+    if (!isMock && (!cfg.supabaseUrl || !cfg.supabaseKey)) {
       failAuth('unavailable');
       return;
     }
 
     if (step === 'create') {
+      if (isMock) {
+        failAuth('unavailable');
+        return;
+      }
       const pe = validatePassword(password);
       const ce = !confirm ? 'Confirm your password.' : confirm !== password ? 'Passwords do not match.' : undefined;
       setPErr(pe); setCErr(ce);
@@ -153,13 +184,21 @@ export function LoginForm({ redirectTarget }: { redirectTarget: string }) {
     setPErr(pe);
     if (pe) { setSummary(true); return; }
     setSummary(false); setMsg(''); setRevealed(false); setPhase('loading');
-    const { operatorEmail } = await operatorAuth();
-    const em = await operatorEmail(cfg.supabaseUrl, cfg.supabaseKey, username);
-    if (em.status !== 'ok') {
-      failAuth(em.status === 'network' ? 'network' : 'invalid');
-      return;
+
+    let email = '';
+    if (auth.name === 'mock') {
+      const { MOCK_USER } = await import('@/services/adapters/auth.mock');
+      email = MOCK_USER;
+    } else {
+      const { operatorEmail } = await operatorAuth();
+      const em = await operatorEmail(cfg.supabaseUrl, cfg.supabaseKey, username);
+      if (em.status !== 'ok') {
+        failAuth(em.status === 'network' ? 'network' : 'invalid');
+        return;
+      }
+      email = em.email;
     }
-    const res = await auth.signIn({ email: em.email, password });
+    const res = await auth.signIn({ email, password });
     if (res.status === 'ok') {
       clearFailures(kv.current);
       setPassword('');
