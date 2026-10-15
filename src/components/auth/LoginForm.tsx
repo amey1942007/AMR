@@ -143,13 +143,15 @@ export function LoginForm({ redirectTarget }: { redirectTarget: string }) {
     e.preventDefault();
     if (phase === 'loading' || wait > 0) return;
     const isMock = auth.name === 'mock';
-    if (!isMock && (!cfg.supabaseUrl || !cfg.supabaseKey)) {
+    const supabaseUrl = cfg.supabaseUrl;
+    const supabaseKey = cfg.supabaseKey;
+    if (!isMock && (!supabaseUrl || !supabaseKey)) {
       failAuth('unavailable');
       return;
     }
 
     if (step === 'create') {
-      if (isMock) {
+      if (isMock || !supabaseUrl || !supabaseKey) {
         failAuth('unavailable');
         return;
       }
@@ -159,7 +161,7 @@ export function LoginForm({ redirectTarget }: { redirectTarget: string }) {
       if (pe || ce) { setSummary(true); return; }
       setSummary(false); setMsg(''); setRevealed(false); setPhase('loading');
       const { operatorClaim } = await operatorAuth();
-      const claimed = await operatorClaim(cfg.supabaseUrl, cfg.supabaseKey, username, password);
+      const claimed = await operatorClaim(supabaseUrl, supabaseKey, username, password);
       if (claimed.status !== 'ok') {
         failAuth(claimed.status === 'network' || claimed.status === 'unavailable' ? claimed.status : 'invalid', {
           text: claimed.reason === 'password' ? 'Use at least 8 characters.' : 'Could not set password. Ask an admin.',
@@ -186,12 +188,16 @@ export function LoginForm({ redirectTarget }: { redirectTarget: string }) {
     setSummary(false); setMsg(''); setRevealed(false); setPhase('loading');
 
     let email = '';
-    if (auth.name === 'mock') {
+    if (isMock) {
       const { MOCK_USER } = await import('@/services/adapters/auth.mock');
       email = MOCK_USER;
     } else {
+      if (!supabaseUrl || !supabaseKey) {
+        failAuth('unavailable');
+        return;
+      }
       const { operatorEmail } = await operatorAuth();
-      const em = await operatorEmail(cfg.supabaseUrl, cfg.supabaseKey, username);
+      const em = await operatorEmail(supabaseUrl, supabaseKey, username);
       if (em.status !== 'ok') {
         failAuth(em.status === 'network' ? 'network' : 'invalid');
         return;
