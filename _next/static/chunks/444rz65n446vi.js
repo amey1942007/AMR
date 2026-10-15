@@ -1,0 +1,1 @@
+(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,25394,n=>{"use strict";n.s(["noneAuth",0,{name:"none",isAvailable:()=>!1,signIn:async()=>({status:"unavailable"}),signOut:async()=>{},getSession:async()=>null,onChange:()=>()=>{}}])}]);

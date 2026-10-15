@@ -1,0 +1,4 @@
+(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,39279,t=>{"use strict";var e=t.i(43476),n=t.i(71645),r=t.i(21157),i=t.i(27225),a=t.i(12693),o=t.i(56055);t.s(["DebugHUD",0,function(){let t=(0,n.useRef)(null),{contact:s}=(0,o.n)(),u=(0,n.useRef)({n:0,t:0,fps:0});return(0,a.f)(e=>{let n=u.current;n.n++,e-n.t>=.5&&(n.fps=Math.round(n.n/(e-n.t)),n.n=0,n.t=e);let a=i.l.getState();t.current&&(t.current.textContent=`p ${r.S.p.toFixed(3)}  uDrive ${r.S.uDrive.toFixed(3)}
+tier ${a.tier}  fps ${n.fps}  nav ${a.navDark?"dark":"light"}
+map ${a.mapPct}%  robot ${a.robotSource}${a.renderPaused?"  render paused":""}
+contact ${s.name}  content static  media static  map runtime`)}),(0,e.jsx)("pre",{ref:t,"aria-hidden":!0,className:"glass pointer-events-none fixed top-[calc(var(--nav-h)+8px)] left-2 rounded-lg p-2 font-mono text-[11px] leading-tight text-white",style:{zIndex:45}})}])},4120,function(t){t.n(t.i(39279))}]);

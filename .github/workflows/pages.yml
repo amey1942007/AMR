@@ -1,19 +1,24 @@
-# Deploys the static export to GitHub Pages at https://amrslam.tech
-# (custom domain; github.io/AMR redirects there). Repo Settings → Pages → Source: "GitHub Actions".
+# Builds the Next static export and publishes it for https://amrslam.tech.
+#
+# GitHub Pages on this repo is "legacy" (branch main, path /) — the Actions token
+# cannot change that setting. So we sync `out/` into the repo root (index.html,
+# _next/, login/, …) which is what legacy Pages serves. We also push `gh-pages`
+# and attempt to switch Pages to Actions / gh-pages when the token allows it.
 name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 concurrency:
   group: pages
   cancel-in-progress: false
 jobs:
-  build:
+  build-and-publish:
+    if: ${{ !contains(github.event.head_commit.message || '', '[skip pages]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,9 +28,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint && npm run typecheck && npm test
-      # Custom domain serves at site root — do not set NEXT_PUBLIC_BASE_PATH=/AMR
-      # (that prefix made CSS/JS 404 at amrslam.tech while HTML still loaded).
-      # Publishable Supabase keys are intentional in the client bundle (RLS protects data).
       - run: npm run build
         env:
           NEXT_PUBLIC_SITE_URL: https://amrslam.tech
@@ -35,17 +37,85 @@ jobs:
           NEXT_PUBLIC_CONTACT_ADAPTER: supabase
           NEXT_PUBLIC_CONTACT_ENDPOINT: ${{ vars.NEXT_PUBLIC_CONTACT_ENDPOINT }}
           NEXT_PUBLIC_CONTROL_PANEL_URL: ${{ vars.NEXT_PUBLIC_CONTROL_PANEL_URL }}
-      # Keep public/CNAME so Pages stays bound to amrslam.tech
-      - uses: actions/configure-pages@v5
+      - name: Stamp out/
+        run: |
+          touch out/.nojekyll
+          echo 'amrslam.tech' > out/CNAME
+
+      - name: Try switch Pages → GitHub Actions
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pages = (await github.rest.repos.getPages({ owner, repo })).data;
+            core.info(`build_type=${pages.build_type} source=${JSON.stringify(pages.source)}`);
+            if (pages.build_type !== 'workflow') {
+              await github.rest.repos.updateInformationAboutPagesSite({
+                owner, repo, build_type: 'workflow', cname: pages.cname || 'amrslam.tech',
+              });
+            }
+
       - uses: actions/upload-pages-artifact@v3
+        continue-on-error: true
         with:
           path: out
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Push gh-pages branch
+        run: |
+          set -e
+          WORK=$(mktemp -d)
+          cp -a out/. "$WORK/"
+          cd "$WORK"
+          git init
+          git checkout -b gh-pages
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m "Deploy $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -f origin gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Try point Pages → gh-pages
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pages = (await github.rest.repos.getPages({ owner, repo })).data;
+            if (pages.build_type === 'workflow') return;
+            await github.rest.repos.updateInformationAboutPagesSite({
+              owner, repo, build_type: 'legacy', cname: pages.cname || 'amrslam.tech',
+              source: { branch: 'gh-pages', path: '/' },
+            });
+
+      # Legacy main / : sync built site into the repo root so Pages serves it.
+      - name: Sync out/ into repo root
+        run: |
+          set -e
+          # Remove previous published route folders (keep source tree)
+          for d in _next about basis contact control credits data draco hdri img licenses \
+                   login maintenance models privacy robots technology textures \
+                   404 _not-found; do
+            rm -rf "$d"
+          done
+          rm -f index.html index.txt 404.html favicon.svg og.png robots.txt sitemap.xml \
+                _headers .nojekyll CNAME __next.*.txt 2>/dev/null || true
+          cp -a out/. ./
+          touch .nojekyll
+          echo 'amrslam.tech' > CNAME
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No publish changes'
+            exit 0
+          fi
+          git commit -m "chore: publish static site to root [skip pages]"
+          git push origin HEAD:main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
