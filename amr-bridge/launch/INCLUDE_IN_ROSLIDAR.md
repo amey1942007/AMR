@@ -2,6 +2,9 @@
 
 Yes — start the cloud bridge from the same launch file as the dashboard.
 
+For the **full agent playbook** (secrets, venv, joy/camera, verify, failure matrix) see  
+[`../AGENT_SETUP_AND_INTEGRATION.md`](../AGENT_SETUP_AND_INTEGRATION.md).
+
 ## 1. Copy onto the Pi package
 
 From this repo’s `amr-bridge/`:
