@@ -50,6 +50,13 @@ export interface TopicRate {
   age?: number | null;
 }
 
+export interface ConsoleLogLine {
+  time: string;
+  level: string;
+  text: string;
+  ts?: number;
+}
+
 export interface BotTelemetry {
   /** Wall-clock ms when the bridge stamped this frame. */
   ts: number;
@@ -62,7 +69,7 @@ export interface BotTelemetry {
   vel: [number, number];
   cmd: [number, number];
   imu?: { gz: number; ax: number; ay: number };
-  /** Lidar points as [x,y] pairs in odom — omitted in board mode. */
+  /** Lidar points as [angle_rad, range_m] in laser frame — omitted in board mode. */
   scan?: [number, number][];
   rates?: Record<string, TopicRate | number>;
   nodes?: Record<string, boolean>;
@@ -70,13 +77,15 @@ export interface BotTelemetry {
   nav?: { status?: string; feedback?: string } | null;
   path?: [number, number][];
   goal?: [number, number] | null;
-  yoloDet?: unknown[];
+  yoloDet?: unknown[] | string[];
   sem?: [number, number, string][];
-  frontier?: { zones: number[][]; queue: number[][] };
+  /** zones: [x,y,r,kind]; queue: [x,y] in map frame */
+  frontier?: { zones: (number | string)[][]; queue: number[][] };
   sys?: SysVitals;
   tool?: string | null;
   vision?: boolean;
   saving?: boolean;
+  logs?: ConsoleLogLine[];
   /** Optional low-rate JPEG data-URL / base64 — only in full mode when camera enabled. */
   cameraJpegB64?: string | null;
   cameraUrl?: string | null;
@@ -98,10 +107,16 @@ export interface MapFrame {
 export type ControlCommand =
   | { type: 'estop' }
   | { type: 'nudge'; lin: number; ang: number }
+  | { type: 'drive'; lin: number; ang: number } // continuous teleop pulse (same as nudge)
+  | { type: 'joy'; axes: number[]; buttons: number } // Xbox layout → Pi web_gamepad /api/joy
   | { type: 'nav_goal'; x: number; y: number }
   | { type: 'nav_cancel' }
   | { type: 'vision'; on: boolean }
   | { type: 'save_map'; name?: string }
+  | { type: 'run_tool'; tool: string; params?: Record<string, unknown> }
+  | { type: 'stop_tool' }
+  | { type: 'blacklist'; action: 'add'; x: number; y: number; radius: number; duration: number }
+  | { type: 'blacklist'; action: 'clear' }
   | { type: 'set_rate'; mode: 'full' | 'board' };
 
 export interface CommandEnvelope {

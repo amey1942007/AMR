@@ -6,6 +6,7 @@ import {
   type BotId,
   type BotTelemetry,
   type CommandEnvelope,
+  type ConsoleLogLine,
   type ControlCommand,
   type ControlLockPresence,
   type HeartbeatMsg,
@@ -19,6 +20,8 @@ import { attachControlLock, fetchOperatorProfile, type ControlLockApi, type Oper
 
 export type LinkStatus = 'connecting' | 'online' | 'degraded' | 'offline';
 
+const MAX_LOGS = 400;
+
 export interface TelemetryView {
   botId: BotId;
   status: LinkStatus;
@@ -28,6 +31,7 @@ export interface TelemetryView {
   lastTs: number | null;
   frame: BotTelemetry | null;
   map: MapFrame | null;
+  logs: ConsoleLogLine[];
   controller: ControlLockPresence | null;
   iAmController: boolean;
   profile: OperatorProfile | null;
@@ -52,6 +56,7 @@ export function useBotTelemetry(
   const [botId, setBotIdState] = useState<BotId>(initialBot);
   const [frame, setFrame] = useState<BotTelemetry | null>(null);
   const [map, setMap] = useState<MapFrame | null>(null);
+  const [logs, setLogs] = useState<ConsoleLogLine[]>([]);
   const [lastTs, setLastTs] = useState<number | null>(null);
   const [lagMs, setLagMs] = useState(0);
   const [viewMode, setViewMode] = useState<'full' | 'board'>('full');
@@ -115,6 +120,20 @@ export function useBotTelemetry(
     ch.on('broadcast', { event: 'map' }, ({ payload }) => {
       const m = payload as MapFrame;
       if (m?.botId === botId) setMap(m);
+    });
+
+    ch.on('broadcast', { event: 'log' }, ({ payload }) => {
+      const line = payload as ConsoleLogLine & { botId?: BotId };
+      if (!line || (line.botId != null && line.botId !== botId)) return;
+      setLogs((prev) => {
+        const next = [...prev, {
+          time: line.time || new Date().toTimeString().slice(0, 8),
+          level: line.level || 'info',
+          text: line.text || '',
+          ts: line.ts,
+        }];
+        return next.length > MAX_LOGS ? next.slice(next.length - MAX_LOGS) : next;
+      });
     });
 
     ch.on('broadcast', { event: 'hb' }, ({ payload }) => {
@@ -208,6 +227,7 @@ export function useBotTelemetry(
     viewModeRef.current = 'full';
     setFrame(null);
     setMap(null);
+    setLogs([]);
     setLastTs(null);
     setController(null);
     setLagMs(0);
@@ -228,6 +248,7 @@ export function useBotTelemetry(
     lastTs,
     frame,
     map,
+    logs,
     controller,
     iAmController: !!(activeProfile && controller?.userId === activeProfile.userId),
     profile: activeProfile,
