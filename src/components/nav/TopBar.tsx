@@ -3,23 +3,21 @@ import type { MouseEvent } from 'react';
 import { Logo } from './Logo';
 import { PillButton } from './PillButton';
 import { MenuButton } from './MenuButton';
+import { ControlPanelLink } from './ControlPanelLink';
 import { Mail } from '@/components/icons';
 import { LoadBar } from '@/components/feedback/LoadBar';
 import { useUI, uiRefs } from '@/lib/ui-store';
-import { useServices } from '@/components/providers/ServicesProvider';
 import { usePathname } from 'next/navigation';
 import { useScene } from '@/lib/store';
 import { MAINTENANCE } from '@/lib/maintenance';
 
 /** Fixed top bar. Home: theme from the scroll store (navDark at p ≥ .18, hysteresis). Sub-pages are dark. */
 export function TopBar() {
-  const { config, auth } = useServices();
   const navDark = useScene((s) => s.navDark);
   const theme = usePathname() === '/' && !navDark ? 'light' : 'dark';
   const dialog = useUI((s) => s.dialog);
   const openDialog = useUI((s) => s.openDialog);
   const closeDialog = useUI((s) => s.closeDialog);
-  const showToast = useUI((s) => s.showToast);
   const onContact = (e: MouseEvent<HTMLElement>) => openDialog('contact', e.currentTarget);
   const fg = theme === 'dark' ? 'var(--paper)' : 'var(--ink)';
 
@@ -32,17 +30,7 @@ export function TopBar() {
         {MAINTENANCE ? null : (
         <nav aria-label="Primary" className="flex items-center gap-3">
           <span className="hidden lg:contents">
-          {config.controlPanelUrl ? (
-            <PillButton kind="ghost" href={config.controlPanelUrl} icon="external">
-              Control panel
-            </PillButton>
-          ) : auth.isAvailable() ? (
-            <PillButton kind="ghost" href="/login/">Control panel</PillButton>
-          ) : (
-            <PillButton kind="ghost" onClick={() => showToast('Live control panel: coming soon')}>
-              Control panel
-            </PillButton>
-          )}
+            <ControlPanelLink />
           </span>
           <span className="hidden md:contents">
             <PillButton kind="filled" icon="arrow" onClick={onContact}>Contact us</PillButton>

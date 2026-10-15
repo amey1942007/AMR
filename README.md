@@ -39,6 +39,17 @@ npm run dev                  # http://localhost:3000
 ## Debug URL flags (home)
 `?debug=1` HUD (p, tier, fps, adapters) · `?tier=low|high` · `?rm=1` reduced-motion mode · `?nowebgl=1` fallback · `?camera=live` runtime spline instead of baked samples.
 
+## Supabase (project **AMR** · `khucmrlbstdlbxcuboub`)
+Production Pages builds bake in the project URL + **publishable** key (safe for the browser; RLS protects rows). Locally: copy `.env.example` → `.env.local`.
+
+| Piece | Where |
+|---|---|
+| Auth (control panel login) | Supabase Auth — create users in **Authentication → Users** (passwords are bcrypt-hashed by Supabase; never store plaintext in a table) |
+| Contact form | `public.contact_submissions` (anon insert-only) |
+| Simulation video | `public.site_videos` row `id = 'simulation'`; set `youtube_id` / `vimeo_id` / file `sources`, then `published = true` |
+
+**Control panel flow:** nav **Control panel** → `/login/` → after sign-in → `/control/` (coming-soon stub, same theme). Dashboard → **Authentication → URL configuration**: Site URL `https://amrslam.tech`, redirect allow `https://amrslam.tech/**`.
+
 ## Contact adapter (`NEXT_PUBLIC_CONTACT_ADAPTER`)
 `supabase | http | mailto` (+ `mock` in dev/test only; a production build never uses the mock). Unset → mock in dev; production → `supabase` if URL + **publishable** key are set, else `mailto` (form hidden, mailto button). Secret/service-role keys are rejected. 10 s request timeout. supabase-js loads on first submit.
 

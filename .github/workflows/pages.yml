@@ -25,13 +25,14 @@ jobs:
       - run: npm run lint && npm run typecheck && npm test
       # Custom domain serves at site root — do not set NEXT_PUBLIC_BASE_PATH=/AMR
       # (that prefix made CSS/JS 404 at amrslam.tech while HTML still loaded).
+      # Publishable Supabase keys are intentional in the client bundle (RLS protects data).
       - run: npm run build
         env:
           NEXT_PUBLIC_SITE_URL: https://amrslam.tech
-          # Optional repo variables (Settings → Secrets and variables → Actions → Variables):
-          NEXT_PUBLIC_CONTACT_ADAPTER: ${{ vars.NEXT_PUBLIC_CONTACT_ADAPTER }}
-          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: https://khucmrlbstdlbxcuboub.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_0b1_bw1g9VUc1H6ROJp0Mw_VWsTOHDb
+          NEXT_PUBLIC_AUTH_ADAPTER: supabase
+          NEXT_PUBLIC_CONTACT_ADAPTER: supabase
           NEXT_PUBLIC_CONTACT_ENDPOINT: ${{ vars.NEXT_PUBLIC_CONTACT_ENDPOINT }}
           NEXT_PUBLIC_CONTROL_PANEL_URL: ${{ vars.NEXT_PUBLIC_CONTROL_PANEL_URL }}
       # Keep public/CNAME so Pages stays bound to amrslam.tech

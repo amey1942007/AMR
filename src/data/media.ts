@@ -2,9 +2,10 @@ import type { MediaVideo } from '@/services/types';
 import { asset } from '@/lib/asset';
 
 /**
- * ui-spec §14.2. Swap the video by editing this file only: set `simulationVideo` to a file / youtube / vimeo entry,
- * or leave it `null` for the "SIMULATION VIDEO · COMING SOON" placeholder. The prebuild check fails the build when
- * a referenced file is missing (never silently).
+ * ui-spec §14.2. Prefer publishing a row in Supabase `site_videos` (id = `simulation`, published = true).
+ * This file is an optional local override: set `simulationVideo` to a file / youtube / vimeo entry, or leave it
+ * `null` so the UI loads from the DB (or shows "SIMULATION VIDEO · COMING SOON"). The prebuild check fails the
+ * build when a referenced file is missing (never silently).
  */
 const REAL: MediaVideo | null = null;
 

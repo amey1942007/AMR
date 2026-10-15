@@ -18,8 +18,9 @@ const base = (scriptSrc, route = '') => [
   "default-src 'self'",
   `script-src 'self' 'wasm-unsafe-eval'${EVAL_PAGES.has(route) ? " 'unsafe-eval'" : ''}${scriptSrc}`, // wasm: Draco/Basis decoders
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
-  "media-src 'self' blob:",
+  // Poster / file media may live on Supabase Storage or YouTube/Vimeo CDNs when site_videos is published.
+  `img-src 'self' data: blob:${supa ? ' ' + supa : ''} https://i.ytimg.com https://i.vimeocdn.com`,
+  `media-src 'self' blob:${supa ? ' ' + supa : ''}`,
   "font-src 'self'",
   `connect-src 'self' data: blob:${supa ? ' ' + supa : ''}`,
   "worker-src 'self' blob:",

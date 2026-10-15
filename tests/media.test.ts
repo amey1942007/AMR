@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { simulationVideo, mediaFilePaths, SIMULATION_FILE_EXAMPLE } from '@/data/media';
 import { staticMedia } from '@/services/adapters/media.static';
+import { rowToMediaVideo, type SiteVideoRow } from '@/services/adapters/media.supabase';
 
 const run = (env: Record<string, string>) => {
   try {
@@ -12,6 +13,31 @@ const run = (env: Record<string, string>) => {
     return 0;
   } catch (e) { return (e as { status: number }).status; }
 };
+
+describe('site_videos row mapping', () => {
+  const base: Omit<SiteVideoRow, 'kind' | 'youtube_id' | 'vimeo_id' | 'sources' | 'poster_url' | 'published'> = {
+    id: 'simulation',
+    title: 'Run',
+    description: null,
+    duration_sec: 75,
+    captions: null,
+    transcript_url: null,
+    width: null,
+    height: null,
+  };
+  it('unpublished → null', () => {
+    expect(rowToMediaVideo({ ...base, kind: 'youtube', youtube_id: 'abc', vimeo_id: null, sources: null, poster_url: null, published: false })).toBeNull();
+  });
+  it('youtube published → MediaVideo', () => {
+    expect(rowToMediaVideo({ ...base, kind: 'youtube', youtube_id: 'abc', vimeo_id: null, sources: null, poster_url: null, published: true })).toEqual(
+      expect.objectContaining({ kind: 'youtube', id: 'abc', title: 'Run', durationSec: 75 }),
+    );
+  });
+  it('file needs sources + poster', () => {
+    expect(rowToMediaVideo({ ...base, kind: 'file', youtube_id: null, vimeo_id: null, sources: [{ src: '/a.mp4', type: 'video/mp4' }], poster_url: null, published: true })).toBeNull();
+    expect(rowToMediaVideo({ ...base, kind: 'file', youtube_id: null, vimeo_id: null, sources: [{ src: '/a.mp4', type: 'video/mp4' }], poster_url: '/p.webp', published: true })?.kind).toBe('file');
+  });
+});
 
 describe('simulation video media (ui-spec §14.2)', () => {
   it('null → placeholder; MediaService.getVideo reads media.ts', () => {

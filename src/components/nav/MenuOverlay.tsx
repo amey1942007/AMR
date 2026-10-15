@@ -4,10 +4,9 @@ import { usePathname } from 'next/navigation';
 import { Dialog } from '@/components/ui/Dialog';
 import { Logo } from './Logo';
 import { MenuButton } from './MenuButton';
-import { PillButton } from './PillButton';
+import { ControlPanelLink } from './ControlPanelLink';
 import { navItems, EMAIL, REPO_URL } from '@/lib/content';
 import { useUI, uiRefs } from '@/lib/ui-store';
-import { useServices } from '@/components/providers/ServicesProvider';
 
 const linkCls =
   'menu-link inline-flex items-center gap-3 font-display font-bold tracking-[-0.03em] leading-none text-[length:var(--text-menu)] min-h-11';
@@ -16,8 +15,6 @@ export function MenuOverlay() {
   const open = useUI((s) => s.dialog === 'menu');
   const closeDialog = useUI((s) => s.closeDialog);
   const openDialog = useUI((s) => s.openDialog);
-  const showToast = useUI((s) => s.showToast);
-  const { config } = useServices();
   const pathname = usePathname();
 
   return (
@@ -51,11 +48,7 @@ export function MenuOverlay() {
             ))}
           </ul>
           <div className="mt-10 lg:hidden">
-            {config.controlPanelUrl ? (
-              <PillButton kind="ghost" href={config.controlPanelUrl} icon="external">Control panel</PillButton>
-            ) : (
-              <PillButton kind="ghost" onClick={() => showToast('Live control panel: coming soon')}>Control panel</PillButton>
-            )}
+            <ControlPanelLink />
           </div>
         </nav>
         <div className="flex gap-6 px-[var(--gutter)] pb-8 text-[length:var(--text-small)] text-muted">
