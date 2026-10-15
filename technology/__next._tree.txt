@@ -1,7 +1,7 @@
-:HL["/_next/static/chunks/2yekt5ze8_kw6.css","style"]
+:HL["/_next/static/chunks/3tkrgah_qjyt5.css","style"]
 :HL["/_next/static/chunks/2ck_japeivksv.css","style"]
 :HL["/_next/static/media/unbounded_latin_wght_normal-s.p.1tz5lbfnvawi1.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
 :HL["/_next/static/chunks/1w0rjkkwkz2gr.css","style"]
 2:[["children",{"s":"__PAGE__","h":160}]]
 1:[["children",{"s":"technology","h":68,"c":"$Q2"}]]
-0:{"b":"F--ndOrPzEKwjOp13_N_n","t":{"t":{"s":"","h":24,"c":"$Q1"}}}
+0:{"b":"KCzwcgvy1hyQ7nnjBq56G","t":{"t":{"s":"","h":24,"c":"$Q1"}}}

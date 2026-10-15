@@ -1,0 +1,1 @@
+(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,9205,e=>{"use strict";e.s(["MOCK_USER",0,"demo@amrslam.tech","MOCK_USERNAME",0,"demo"])}]);
