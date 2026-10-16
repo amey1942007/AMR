@@ -1,7 +1,7 @@
-/** Exit timing for the site menu. Durations match --dur-menu / --dur-theme; stagger matches globals.css. */
-export const MENU_LINE_MS = 600;
-export const MENU_STAGGER_MS = 60;
-export const MENU_FADE_MS = 300;
+/** Close timings. Match --dur-menu-exit, --menu-stagger-exit, and --dur-menu-scrim. Open stays --dur-menu (600ms) / 60ms. */
+export const MENU_LINE_MS = 320;
+export const MENU_STAGGER_MS = 30;
+export const MENU_FADE_MS = 420;
 /** Ignore transitionend that fires before the exit has actually finished (interrupted enters, bubbled events). */
 export const MENU_EXIT_EPSILON_MS = 40;
 export const MENU_EXIT_FALLBACK_PAD_MS = 150;

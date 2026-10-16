@@ -5,7 +5,7 @@ import { getLenis } from '@/lib/lenis-ref';
 const FOCUSABLE =
   'a[href],button:not([disabled]),input:not([disabled]):not([tabindex="-1"]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
-/** Shared so an exit (`closing`) can keep the lock after `open` drops without clobbering another dialog's restore. */
+/** Refcount so a close that opens another dialog (Menu → Contact) does not restore overflow early. */
 let scrollLocks = 0;
 let savedOverflow = '';
 function lockPageScroll() {
@@ -64,10 +64,9 @@ export function Dialog({ open, onClose, labelledBy, id, className, initialFocus,
   // Layout effect: the Escape/Tab handlers and inert background must exist in the same commit that makes the dialog
   // interactive. As a passive effect it could lag a slow (WebGL-heavy) frame, so an early Escape was lost.
   useLayoutEffect(() => {
-    // Hold the scroll lock through the exit so the scrollbar doesn't pop in under the animation.
-    if (!open && !closing) return;
+    // Release the lock as soon as close starts (cleanup below). scrollbar-gutter: stable absorbs the scrollbar.
+    if (!open) return;
     lockPageScroll();
-    if (!open) return () => unlockPageScroll();
     const root = ref.current!;
     const bg = BACKGROUND_IDS.map((i) => document.getElementById(i)).filter(Boolean) as HTMLElement[];
     bg.forEach((el) => el.setAttribute('inert', ''));
@@ -111,7 +110,7 @@ export function Dialog({ open, onClose, labelledBy, id, className, initialFocus,
       }, 0);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, closing]);
+  }, [open]);
 
   return (
     <div

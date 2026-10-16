@@ -11,6 +11,7 @@ import { useUI, uiRefs } from '@/lib/ui-store';
 import {
   menuExitDurationMs,
   menuPhaseForOpen,
+  MENU_EXIT_EPSILON_MS,
   MENU_EXIT_FALLBACK_PAD_MS,
   shouldSettleMenuExit,
   transitionEndMs,
@@ -52,8 +53,10 @@ export function MenuOverlay() {
       transitionEndMs(getComputedStyle(el), 'transform'),
     );
     const measured = Math.max(transitionEndMs(getComputedStyle(root), 'opacity'), ...lineEnds, 0);
-    // Never settle before the designed exit. A short computed read (styles not flushed) must not clip it.
-    const expected = Math.max(measured, menuExitDurationMs(navItems.length));
+    const designed = menuExitDurationMs(navItems.length);
+    // Floor at the close tokens (~470ms). A stale open-duration read (600ms + 60ms stagger) must not hold the veil.
+    const plausible = measured > 0 && measured <= designed + MENU_EXIT_EPSILON_MS ? measured : 0;
+    const expected = Math.max(plausible, designed);
     const started = performance.now();
     const onEnd = (event: Event) => {
       const el = event.target;

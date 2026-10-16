@@ -45,7 +45,7 @@
   line-height: 1;
 }
 
-html { background: var(--bg); color: var(--paper); font-family: var(--font-sans); }
+html { background: var(--bg); color: var(--paper); font-family: var(--font-sans); scrollbar-gutter: stable; }
 body { -webkit-font-smoothing: antialiased; font-size: var(--text-body); line-height: 1.55; }
 :focus-visible { outline: 2px solid var(--magenta); outline-offset: 2px; }
 .sr-only-focusable:not(:focus):not(:focus-within) {
@@ -58,30 +58,31 @@ body { -webkit-font-smoothing: antialiased; font-size: var(--text-body); line-he
 .drawer-panel { transform: translateX(100%); transition: transform var(--dur-theme) var(--ease-io); }
 [data-open='true'] > .drawer-panel { transform: none; transition-duration: var(--dur-drawer); transition-timing-function: var(--ease-expo); }
 .menu-panel {
-  --menu-stagger: 60ms;
-  --menu-exit: calc(var(--dur-menu) + (var(--menu-count, 6) - 1) * var(--menu-stagger));
+  --menu-stagger: 60ms; /* open stagger; close uses --menu-stagger-exit */
+  --menu-exit: calc(var(--dur-menu-exit) + (var(--menu-count, 6) - 1) * var(--menu-stagger-exit));
   opacity: 0;
   transition: opacity var(--dur-theme) var(--ease-io);
 }
 .menu-panel[data-open='true'] { opacity: 1; }
-/* Exit lives on the resting rule so removing data-open reverses the slide (open-only transitions snap shut). */
+/* Resting rule is the exit: removing data-open reverses the slide. Open keeps --dur-menu / --ease-expo. */
 .menu-line {
   display: block;
   transform: translateY(100%);
-  transition: transform var(--dur-menu) var(--ease-expo);
-  transition-delay: calc((var(--menu-count, 6) - 1 - var(--i, 0)) * var(--menu-stagger, 60ms));
+  transition: transform var(--dur-menu-exit) var(--ease-menu-exit);
+  transition-delay: calc((var(--menu-count, 6) - 1 - var(--i, 0)) * var(--menu-stagger-exit));
 }
 .menu-panel[data-open='true'] .menu-line {
   transform: none;
   transition: transform var(--dur-menu) var(--ease-expo);
   transition-delay: calc(var(--i, 0) * var(--menu-stagger, 60ms));
 }
-/* .dlg-root[inert] replaces `transition` and hides after 300ms, which clips this exit. Stay visible until unmount. */
+/* .dlg-root[inert] replaces `transition` and hides after 300ms, which clips this exit. Stay visible until unmount.
+   Scrim fades on its own (no delay); it does not track --menu-exit, or the veil outlasts the links. */
 .dlg-root.menu-panel[data-closing='true'] {
   visibility: visible;
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--menu-exit) var(--ease-io), visibility 0s linear 0s;
+  transition: opacity var(--dur-menu-scrim) var(--ease-out), visibility 0s linear 0s;
 }
 .menu-burger-bar {
   transition:

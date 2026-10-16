@@ -22,20 +22,30 @@ test('menu close stays mounted through the exit, then unmounts', async ({ page }
   const exiting = await overlay.evaluate((el) => {
     const cs = getComputedStyle(el);
     const line = el.querySelector('.menu-line');
+    const toMs = (value: string) => {
+      const n = parseFloat(value);
+      return value.trim().endsWith('ms') ? n : n * 1000;
+    };
     return {
       visibility: cs.visibility,
       opacity: Number(cs.opacity),
-      duration: cs.transitionDuration,
-      lineDuration: line ? getComputedStyle(line).transitionDuration : '0s',
+      scrimMs: toMs(cs.transitionDuration),
+      lineMs: toMs(line ? getComputedStyle(line).transitionDuration : '0s'),
+      overflow: document.documentElement.style.overflow,
+      gutter: getComputedStyle(document.documentElement).scrollbarGutter,
     };
   });
   expect(exiting.visibility).toBe('visible');
-  expect(exiting.opacity).toBeGreaterThan(0.4);
-  // Panel fade is the full exit (~900ms), not the inert rule's instant hide. Lines keep a transform transition.
-  expect(parseFloat(exiting.duration)).toBeGreaterThan(0.5);
-  expect(parseFloat(exiting.lineDuration)).toBeGreaterThan(0);
+  expect(exiting.opacity).toBeGreaterThan(0.15);
+  // Scrim is 400–450ms (not the old 900ms veil). Link exit is 320ms. Scroll lock is already gone.
+  expect(exiting.scrimMs).toBeGreaterThanOrEqual(400);
+  expect(exiting.scrimMs).toBeLessThanOrEqual(450);
+  expect(exiting.lineMs).toBeGreaterThanOrEqual(300);
+  expect(exiting.lineMs).toBeLessThanOrEqual(340);
+  expect(exiting.overflow).not.toBe('hidden');
+  expect(exiting.gutter).toBe('stable');
 
-  await expect(overlay).toHaveCount(0, { timeout: 2500 });
+  await expect(overlay).toHaveCount(0, { timeout: 1200 });
 
   // Escape still closes, and a second open is not stuck in the exit.
   await openBtn.click();

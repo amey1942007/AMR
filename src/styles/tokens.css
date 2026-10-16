@@ -61,7 +61,11 @@
   --dur-enter: 700ms;
   --dur-toast: 450ms;
   --dur-drawer: 500ms;
-  --dur-menu: 600ms;
+  --dur-menu: 600ms; /* open line slide */
+  --dur-menu-exit: 320ms; /* close line slide */
+  --dur-menu-scrim: 420ms; /* close scrim, 400–450ms */
+  --menu-stagger-exit: 30ms;
+  --ease-menu-exit: cubic-bezier(0.2, 0.8, 0.2, 1);
   --dur-hero-letters: 900ms;
   --dur-robot-in: 1200ms;
   --dur-rm: 200ms;
