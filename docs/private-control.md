@@ -13,13 +13,13 @@ Operator sign-in is email and password. Driving rights come from the control lea
 
 Do not set the flag in the production Pages build until Review & Debugger OKs the cut-over and the bridge is subscribed to the private topics. The lease RPCs run in both modes. The control token is sent only on the private `:cmd` topic. The public `command` broadcast never includes it.
 
-With the flag off, discrete commands are broadcast on the public channel (the current bridge does not read `send_command`). With the flag on, continuous commands (`nudge`, `joy`, `drive`) go to `:cmd` and discrete commands go through the `send_command` RPC. E-STOP uses `:cmd` only while that channel is `SUBSCRIBED`. If it is not subscribed, or the broadcast send fails, E-STOP falls back to `send_command` with `{type:'estop'}`. `estop` is exempt from the 30-per-10s rate limit; `command too large` can still be raised.
+The project Realtime setup has no message partitions, so a database push on `:ctl`, `:cmdq`, or `user:<uid>:notify` is dropped. The panel does not depend on those. Control state comes from `bot_heartbeat` (every 5 seconds, every 2 seconds while a request is pending). With the flag on, every command type — including discrete ones such as `nav_goal` and `run_tool` — is a client broadcast on `bot:<id>:cmd`, carrying the lease token and the shared time-based `seq`. The bridge already accepts every command type there. `send_command` is used only for E-STOP when `:cmd` is not `SUBSCRIBED`. A failed broadcast while the channel is still subscribed is not sent through the RPC. With the flag off, commands stay on the public channel (the current bridge does not read `send_command`).
 
-Viewers do not subscribe to `bot:<id>:cmd`. The client joins `:cmd` only after a controller-shaped result: `join_bot` when the role is controller, `control_gained`, or `control_result` with status `accepted`. It leaves `:cmd` on `control_lost` and when Give sets the role to viewer. A listen-channel reconnect (`:status`, `:ctl`, `:notify`) does not open `:cmd`. It rejoins `:cmd` only if the role is still controller. A `:cmd` channel error retries that topic alone and does not resubscribe the listen channels.
+Viewers do not subscribe to `bot:<id>:cmd`. The client joins `:cmd` only after a controller-shaped result: `join_bot` when the role is controller, `control_gained`, `control_result` with status `accepted`, or a heartbeat that still says controller. It leaves `:cmd` on `control_lost` and when Give sets the role to viewer. A listen-channel reconnect (`:status`, `:ctl`, `:notify`) does not open `:cmd`. It rejoins `:cmd` only if the role is still controller. A `:cmd` channel error retries that topic alone and does not resubscribe the listen channels.
 
 `seq` is a millisecond timestamp, then +1 for later commands in the same epoch, so a reloaded page does not go backwards against rows already stored. Command `ts` adds the offset learned from the controller's own heartbeat: `lease_expires_at` is server now plus 15 seconds. The offset is updated only while the role is controller. A viewer heartbeat's lease belongs to the current driver and can be a few seconds stale.
 
-`send_command` can reject with `rate limited` or `command too large`. The panel toasts that exact text and writes it to the console. A failed join or heartbeat shows the RPC message in the reconnect bar.
+`send_command`, used only for that E-STOP fallback, can reject with `rate limited` or `command too large`. The panel toasts that exact text and writes it to the console. A failed join or heartbeat shows the RPC message in the reconnect bar.
 
 ## Auth redirect allowlist
 
@@ -86,7 +86,7 @@ Flag off vs on
 
 - [ ] Flag unset: browser subscribes to `amr-bot-amr4` or `amr-bot-hardware-bot`. Command payloads have no `token` field.
 - [ ] Flag on, viewer: browser subscribes to `:status`, `:ctl`, and `user:<uid>:notify` only. It does not open `:cmd`.
-- [ ] Flag on, controller: `:cmd` is joined, and frames include epoch, token, seq, and ts. Seq is a clock value and increases inside one epoch. Nav, tools, vision, save map, and blacklist go through `send_command`.
-- [ ] Flag on, E-STOP while `:cmd` is down, or after a failed broadcast: the panel calls `send_command` with `{type:'estop'}`.
+- [ ] Flag on, controller: `:cmd` is joined. Nav, tools, vision, save map, blacklist, nudge, and joy are broadcasts on `:cmd` with epoch, token, seq, and ts. Seq is one shared clock and increases inside one epoch. None of those call `send_command`.
+- [ ] Flag on, E-STOP while `:cmd` is `SUBSCRIBED`: the same `:cmd` broadcast. While it is not subscribed: `send_command` with `{type:'estop'}` only.
 - [ ] A `send_command` rejection of `rate limited` or `command too large` is shown in a toast and on the console.
 - [ ] `https://amrslam.tech/set-password` and `https://amrslam.tech/sign-in` are on the Supabase Auth redirect allowlist.

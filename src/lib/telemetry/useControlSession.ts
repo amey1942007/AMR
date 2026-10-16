@@ -7,9 +7,8 @@ import {
   PENDING_POLL_MS,
   alignedNow,
   createSeqCounter,
-  estopUsesRpc,
-  isContinuous,
   privateCmdPayload,
+  privateCommandRoute,
   publicCommandEnvelope,
   serverOffsetFromLease,
   shouldFastPoll,
@@ -393,24 +392,19 @@ export function useControlSession(
     try { seq = seqRef.current.next(epochNow); } catch { return { ok: false, error: 'epoch' }; }
     const ts = alignedNow(Date.now(), offsetRef.current);
     if (privateControl) {
-      if (cmd.type === 'estop') {
-        const ch = cmdChRef.current;
-        const subscribed = Boolean(cmdSubscribedRef.current && ch && token);
-        if (!estopUsesRpc({ cmdSubscribed: subscribed })) {
-          const res = await ch!.send({ type: 'broadcast', event: 'command', payload: privateCmdPayload(cmd, { epoch: epochNow, token: token!, seq, ts }) });
-          if (!estopUsesRpc({ cmdSubscribed: true, channelResult: res })) return { ok: true };
-          try { seq = seqRef.current.next(epochNow); } catch { return { ok: false, error: 'epoch' }; }
-        }
-        return rpcCommand({ type: 'estop' }, epochNow, seq);
-      }
-      if (!token) return { ok: false, error: 'no-token' };
-      if (isContinuous(cmd)) {
-        const ch = cmdChRef.current;
-        if (!ch || !cmdSubscribedRef.current) return { ok: false, error: 'no-channel' };
-        const res = await ch.send({ type: 'broadcast', event: 'command', payload: privateCmdPayload(cmd, { epoch: epochNow, token, seq, ts }) });
+      const ch = cmdChRef.current;
+      const subscribed = Boolean(cmdSubscribedRef.current && ch && token);
+      const route = privateCommandRoute(cmd.type, subscribed);
+      if (route === 'cmd') {
+        const res = await ch!.send({
+          type: 'broadcast',
+          event: 'command',
+          payload: privateCmdPayload(cmd, { epoch: epochNow, token: token!, seq, ts }),
+        });
         return { ok: res === 'ok', error: res === 'ok' ? undefined : 'send' };
       }
-      return rpcCommand(cmd, epochNow, seq);
+      if (route === 'estop-rpc') return rpcCommand({ type: 'estop' }, epochNow, seq);
+      return { ok: false, error: token ? 'no-channel' : 'no-token' };
     }
     const ch = publicChRef.current;
     if (!ch) return { ok: false, error: 'no-channel' };

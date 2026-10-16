@@ -8,6 +8,7 @@ import {
   createSeqCounter,
   estopUsesRpc,
   isContinuous,
+  privateCommandRoute,
   payloadHasToken,
   privateCmdPayload,
   publicCommandEnvelope,
@@ -107,12 +108,26 @@ describe('command wire format', () => {
     expect(shouldHoldCmdChannel('control_lost', 'controller')).toBe(false);
   });
 
-  it('falls back to send_command when :cmd is down or the send fails', () => {
+  it('sends every command type on :cmd and reserves send_command for an unsubscribed E-STOP', () => {
+    for (const type of ['nav_goal', 'run_tool', 'nudge', 'joy', 'vision', 'save_map', 'blacklist', 'estop']) {
+      expect(privateCommandRoute(type, true)).toBe('cmd');
+    }
+    expect(privateCommandRoute('nav_goal', false)).toBe('blocked');
+    expect(privateCommandRoute('run_tool', false)).toBe('blocked');
+    expect(privateCommandRoute('estop', false)).toBe('estop-rpc');
     expect(estopUsesRpc({ cmdSubscribed: false })).toBe(true);
     expect(estopUsesRpc({ cmdSubscribed: true })).toBe(false);
-    expect(estopUsesRpc({ cmdSubscribed: true, channelResult: 'ok' })).toBe(false);
-    expect(estopUsesRpc({ cmdSubscribed: true, channelResult: 'timed out' })).toBe(true);
-    expect(estopUsesRpc({ cmdSubscribed: false, channelResult: 'ok' })).toBe(true);
+
+    let clock = 1_700_000_000_000;
+    const seq = createSeqCounter(() => clock);
+    const meta = { epoch: 4, token: 'lease-token', ts: 9 };
+    const nav = privateCmdPayload({ type: 'nav_goal', x: 1.5, y: 2 }, { ...meta, seq: seq.next(4) });
+    const tool = privateCmdPayload({ type: 'run_tool', tool: 'imu_test', params: { speed: 0.5 } }, { ...meta, seq: seq.next(4) });
+    expect(nav).toMatchObject({ type: 'nav_goal', x: 1.5, y: 2, epoch: 4, token: 'lease-token', seq: clock, ts: 9 });
+    expect(payloadHasToken(nav)).toBe(true);
+    clock += 1;
+    expect(tool).toMatchObject({ type: 'run_tool', tool: 'imu_test', token: 'lease-token', seq: clock });
+    expect(tool.seq).toBe(nav.seq as number + 1);
   });
 
   it('shows the send_command limit phrases and aligns time from the lease', () => {

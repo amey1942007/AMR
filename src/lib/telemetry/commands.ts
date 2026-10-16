@@ -104,14 +104,22 @@ export function alignedNow(localNow: number, offsetMs: number | null | undefined
   return localNow + (offsetMs ?? 0);
 }
 
+export type PrivateCommandRoute = 'cmd' | 'estop-rpc' | 'blocked';
+
 /**
- * E-STOP uses `:cmd` only while that channel is SUBSCRIBED.
- * Otherwise, and when the broadcast send fails, it must go through `send_command`.
+ * Realtime has no message partitions, so a database push on `:cmdq` is dropped.
+ * Every command type is a client broadcast on `bot:<id>:cmd` while that channel
+ * is SUBSCRIBED. `send_command` is only the E-STOP fallback when it is not.
  */
-export function estopUsesRpc(input: { cmdSubscribed: boolean; channelResult?: 'ok' | string | null }): boolean {
-  if (!input.cmdSubscribed) return true;
-  if (input.channelResult != null && input.channelResult !== 'ok') return true;
-  return false;
+export function privateCommandRoute(type: string, cmdSubscribed: boolean): PrivateCommandRoute {
+  if (cmdSubscribed) return 'cmd';
+  if (type === 'estop') return 'estop-rpc';
+  return 'blocked';
+}
+
+/** E-STOP uses `send_command` only while `bot:<id>:cmd` is not SUBSCRIBED. */
+export function estopUsesRpc(input: { cmdSubscribed: boolean }): boolean {
+  return privateCommandRoute('estop', input.cmdSubscribed) === 'estop-rpc';
 }
 
 /** Visible copy when `send_command` raises one of the limit errors. Other messages stay as returned. */
