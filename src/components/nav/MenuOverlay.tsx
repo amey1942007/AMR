@@ -28,24 +28,25 @@ export function MenuOverlay() {
   const closeDialog = useUI((s) => s.closeDialog);
   const openDialog = useUI((s) => s.openDialog);
   const pathname = usePathname();
-  // False while an exit is still on screen. Reset on the next open so a later close can animate.
-  const [settledClosed, setSettledClosed] = useState(false);
-  const phase = menuPhaseForOpen(settledClosed ? 'closed' : 'closing', open, prefersReducedMotion());
+  // True from open until the exit has settled, so a close can animate and a later close can too.
+  const [hold, setHold] = useState(false);
+  const reduced = prefersReducedMotion();
+  if (open && !hold) setHold(true);
+  if (!open && reduced && hold) setHold(false);
+  const phase = menuPhaseForOpen(hold ? 'closing' : 'closed', open, reduced);
 
   useLayoutEffect(() => {
-    if (open) {
-      setSettledClosed(false);
-      return;
-    }
-    if (settledClosed || phase !== 'closing') {
-      if (!settledClosed) setSettledClosed(true);
-      return;
-    }
+    if (phase !== 'closing') return;
     const root = document.getElementById('menu-overlay');
-    const finish = () => setSettledClosed(true);
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      setHold(false);
+    };
     if (!root) {
-      finish();
-      return;
+      const t = window.setTimeout(settle, 0);
+      return () => window.clearTimeout(t);
     }
     const lineEnds = Array.from(root.querySelectorAll<HTMLElement>('.menu-line')).map((el) =>
       transitionEndMs(getComputedStyle(el), 'transform'),
@@ -54,12 +55,6 @@ export function MenuOverlay() {
     // Never settle before the designed exit. A short computed read (styles not flushed) must not clip it.
     const expected = Math.max(measured, menuExitDurationMs(navItems.length));
     const started = performance.now();
-    let settled = false;
-    const settle = () => {
-      if (settled) return;
-      settled = true;
-      finish();
-    };
     const onEnd = (event: Event) => {
       const el = event.target;
       if (!(el instanceof Element)) return;
@@ -82,7 +77,7 @@ export function MenuOverlay() {
       root.removeEventListener('animationend', onEnd);
       window.clearTimeout(timer);
     };
-  }, [open, phase, settledClosed]);
+  }, [phase]);
 
   if (phase === 'closed') return null;
 

@@ -7,25 +7,32 @@ test('menu close stays mounted through the exit, then unmounts', async ({ page }
   const overlay = page.locator('#menu-overlay');
   await expect(overlay).toHaveAttribute('data-open', 'true');
   await expect(page.locator('#menu-overlay nav a').first()).toBeFocused();
+  await expect.poll(() => overlay.evaluate((el) => Number(getComputedStyle(el).opacity))).toBeGreaterThan(0.95);
 
-  await page.getByRole('button', { name: 'Close menu' }).click();
+  await page.getByRole('dialog', { name: 'Site menu' }).getByRole('button', { name: 'Close menu' }).click();
   await expect(openBtn).toBeFocused();
   await expect(openBtn).toHaveAttribute('aria-expanded', 'false');
   await expect(overlay).toHaveAttribute('data-closing', 'true');
   await expect(overlay).toHaveAttribute('inert', '');
   await expect(overlay).not.toHaveAttribute('data-open', 'true');
+  // Let the exit transition start before reading computed style (a same-frame flush reports the end value).
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve(undefined)));
+  }));
   const exiting = await overlay.evaluate((el) => {
     const cs = getComputedStyle(el);
     const line = el.querySelector('.menu-line');
-    const lineCs = line ? getComputedStyle(line) : null;
     return {
       visibility: cs.visibility,
       opacity: Number(cs.opacity),
-      lineDuration: lineCs?.transitionDuration ?? '0s',
+      duration: cs.transitionDuration,
+      lineDuration: line ? getComputedStyle(line).transitionDuration : '0s',
     };
   });
   expect(exiting.visibility).toBe('visible');
   expect(exiting.opacity).toBeGreaterThan(0.4);
+  // Panel fade is the full exit (~900ms), not the inert rule's instant hide. Lines keep a transform transition.
+  expect(parseFloat(exiting.duration)).toBeGreaterThan(0.5);
   expect(parseFloat(exiting.lineDuration)).toBeGreaterThan(0);
 
   await expect(overlay).toHaveCount(0, { timeout: 2500 });
