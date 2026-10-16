@@ -202,6 +202,8 @@
   .op .right { display: contents; }
   .op .banner { order: -1; }
   .op-header { align-items: flex-start; }
+  /* The wrapped header is taller than 65px, so a fixed 105px top still covers the bar. */
+  .op .stack { position: static; width: min(360px, calc(100% - 28px)); margin: 14px 14px 0 auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   .op .spin { animation: none; border-top-color: var(--warn); }
