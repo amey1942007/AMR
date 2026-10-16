@@ -60,6 +60,29 @@
   100% { box-shadow: 0 0 0 6px rgba(125, 143, 161, 0); }
 }
 
+.op-signs {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 8px 18px; background: var(--inset); border-bottom: 1px solid var(--edge);
+}
+.op-sign {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 32px;
+  padding: 4px 10px; border: 1px dashed var(--edge); border-radius: 8px;
+  color: var(--tx); font-size: 13px; font-weight: 600; background: transparent;
+}
+.op-sign[data-on="true"] { border-style: solid; border-width: 2px; background: var(--card); }
+.op-sign.sign-nodata[data-on="true"] { border-color: var(--warn); }
+.op-sign.sign-down[data-on="true"] { border-color: var(--err); }
+.op-sign.sign-error[data-on="true"] { border-color: var(--err); }
+.op-sign .reason { font-weight: 500; color: var(--dim); }
+.op-sign .sign-half, .op-sign .sign-hollow, .op-sign .sign-x { width: 12px; height: 12px; flex: none; }
+.op-sign .sign-half {
+  border-radius: 50%; border: 1.5px solid currentColor;
+  background: linear-gradient(90deg, currentColor 50%, transparent 50%);
+}
+.op-sign .sign-hollow { border-radius: 50%; border: 1.5px solid currentColor; background: transparent; }
+.op-sign .sign-x { display: block; }
+.op-telem { margin-left: auto; font-size: 13px; color: var(--acc); }
+
 .op-grow { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .op-estop {
   background: var(--err); color: #fff; border: 0; border-radius: 8px;
@@ -178,9 +201,9 @@
 .op .prompt h3 { font-size: 14px; font-weight: 700; }
 .op .prompt p { color: var(--dim); font-size: 13px; margin: 4px 0 8px; }
 .op .count { font-family: ui-monospace, Consolas, monospace; font-size: 14px; }
-.op .stack { position: fixed; right: 14px; top: 62px; z-index: 8; display: flex; flex-direction: column; gap: 8px; width: 360px; max-width: calc(100vw - 28px); }
-/* Header is about 65px; the latched bar is 40px. 62px still clears a header with no bar. */
-.op:has(.op-estop-bar) .stack { top: 105px; }
+.op .stack { position: fixed; right: 14px; top: 118px; z-index: 8; display: flex; flex-direction: column; gap: 8px; width: 360px; max-width: calc(100vw - 28px); }
+/* Header plus the status-sign row. The latched bar adds 40px. */
+.op:has(.op-estop-bar) .stack { top: 158px; }
 .op .chip { background: var(--inset); color: var(--dim); border-radius: 99px; padding: 2px 8px; font-size: 12px; }
 
 .op .toasts { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 9; }
