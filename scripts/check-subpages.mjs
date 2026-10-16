@@ -10,12 +10,12 @@ import { join } from 'node:path';
 const PAGES = ['robots', 'robots/hardware-bot', 'robots/amr4', 'technology', 'about', 'contact', 'privacy'];
 // Auth pages stay above the shared shell by a small amount. supabase-js (signInWithPassword / GoTrueClient)
 // must stay out of the initial scripts — password and RPC helpers are dynamic imports.
-// /control stays at +6 KB because the dashboard is next/dynamic. Sign-in and set-password include the
-// operator form (email + password, not the old username claim). Raise only after measuring a real build.
+// /control stays at +6 KB because the dashboard is next/dynamic. Measured 2026-10-16: sign-in +3.2 KB,
+// set-password +2.8 KB, login +3.2 KB. Cap is 8 KB so a supabase-js leak still fails the build.
 const UTIL = {
-  'login': 16,
-  'sign-in': 16,
-  'set-password': 16,
+  'login': 8,
+  'sign-in': 8,
+  'set-password': 8,
   'login/reset': 6,
   'control': 6,
   'maintenance': 4,

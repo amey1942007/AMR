@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 
 const serious = (r: { violations: { impact?: string | null; id: string }[] }) => r.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
 
-const pages = ['/login/', '/sign-in/', '/set-password/', '/login/reset/', '/maintenance/', '/does-not-exist-404/'];
+const pages = ['/login/', '/sign-in/', '/set-password/', '/maintenance/', '/does-not-exist-404/'];
 
 test.describe('login-spec pages', () => {
   for (const path of pages) {
@@ -13,6 +13,12 @@ test.describe('login-spec pages', () => {
       expect(serious(await new AxeBuilder({ page }).analyze())).toEqual([]);
     });
   }
+
+  test('/login/reset/ redirects to the forgot-password card', async ({ page }) => {
+    await page.goto('/login/reset/');
+    await page.waitForURL(/\/sign-in\/\?forgot=1/, { timeout: 10_000 });
+    expect(serious(await new AxeBuilder({ page }).analyze())).toEqual([]);
+  });
 
   test('/control without a session → /sign-in/?next=/control/', async ({ page }) => {
     await page.goto('/control/');
