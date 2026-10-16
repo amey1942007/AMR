@@ -5,7 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { useAuth } from '@/lib/useAuth';
 import { readConfig } from '@/lib/config';
 import { asset } from '@/lib/asset';
-import { getAuthClient } from '@/services/supabase-client';
+import { getAuthClient, getBroadcastClient } from '@/services/supabase-client';
 import { BOTS, type BotId, type ControlCommand } from '@/lib/telemetry/protocol';
 import { offlineMessage, type LinkPhase } from '@/lib/telemetry/link-status';
 import { SIGN_DOWN, SIGN_ERROR, SIGN_NO_DATA, type StatusSignId } from '@/lib/telemetry/status-signs';
@@ -30,9 +30,10 @@ export function Dashboard() {
   const { session, signOut } = useAuth();
   const cfg = readConfig();
   const [client, setClient] = useState<SupabaseClient | null>(null);
+  const [broadcastClient, setBroadcastClient] = useState<SupabaseClient | null>(null);
   const [botId, setBotId] = useState<BotId>('amr4');
   const userId = session?.userId ?? null;
-  const tel = useControlSession(client, userId, botId);
+  const tel = useControlSession(client, userId, botId, broadcastClient);
 
   const [mode, setMode] = useState<Mode>('none');
   const [scale, setScale] = useState(70);
@@ -72,7 +73,14 @@ export function Dashboard() {
   useEffect(() => {
     if (!cfg.supabaseUrl || !cfg.supabaseKey) return;
     let live = true;
-    getAuthClient(cfg.supabaseUrl, cfg.supabaseKey).then((c) => { if (live) setClient(c); });
+    Promise.all([
+      getAuthClient(cfg.supabaseUrl, cfg.supabaseKey),
+      getBroadcastClient(cfg.supabaseUrl, cfg.supabaseKey),
+    ]).then(([auth, broadcast]) => {
+      if (!live) return;
+      setClient(auth);
+      setBroadcastClient(broadcast);
+    });
     return () => { live = false; };
   }, [cfg.supabaseUrl, cfg.supabaseKey]);
 

@@ -126,6 +126,19 @@ describe('status signs', () => {
     expect(view.errorReason).toBeNull();
   });
 
+  it('shows the channel status on the error line when no frames are arriving', () => {
+    const view = deriveStatusSigns(facts({
+      phase: 'idle',
+      lastSeenReadable: true,
+      lastSeenChangedAt: NOW - 2_000,
+      channelFailed: true,
+      realtimeDown: true,
+      channelDetail: 'CHANNEL_ERROR: JwtSignatureError: Failed to validate JWT signature',
+    }));
+    expect(view.active).toBe('error');
+    expect(view.errorReason).toBe('Status channel error: CHANNEL_ERROR: JwtSignatureError: Failed to validate JWT signature');
+  });
+
   it('shows a status-channel error when the bot is still present', () => {
     const view = deriveStatusSigns(facts({
       phase: 'idle',

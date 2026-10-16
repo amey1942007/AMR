@@ -3,10 +3,13 @@ import {
   SIDE_CHANNEL_NOTE,
   authEventRefreshesRealtime,
   emptyChannelMembership,
+  formatChannelDetail,
   interpretChannelStatus,
+  linkRetryAction,
   openChannel,
   retireChannels,
 } from '@/lib/telemetry/channel-watch';
+import { BROADCAST_AUTH } from '@/services/supabase-client';
 import { controlListenPlan } from '@/lib/telemetry/channels';
 
 describe('control listen plan', () => {
@@ -139,6 +142,41 @@ describe('channel subscribe generation', () => {
     expect(back.note).toBeNull();
     expect(back.channelFailed).toBeNull();
     expect(back.resubscribe).toBe(false);
+  });
+});
+
+describe('public join recovery', () => {
+  it('cancels a retry armed by CHANNEL_ERROR when SUBSCRIBED follows', () => {
+    let armed = false;
+    const step = (status: string) => {
+      const action = linkRetryAction(status);
+      if (action === 'arm') armed = true;
+      if (action === 'cancel') armed = false;
+    };
+    step('CHANNEL_ERROR');
+    expect(armed).toBe(true);
+    expect(linkRetryAction('TIMED_OUT')).toBe('arm');
+    expect(linkRetryAction('CLOSED')).toBe('arm');
+    step('SUBSCRIBED');
+    expect(armed).toBe(false);
+    step('CHANNEL_ERROR');
+    expect(armed).toBe(true);
+    step('SUBSCRIBED');
+    expect(armed).toBe(false);
+  });
+
+  it('keeps the public socket free of a persisted operator session', () => {
+    expect(BROADCAST_AUTH.persistSession).toBe(false);
+    expect(BROADCAST_AUTH.autoRefreshToken).toBe(false);
+    expect(BROADCAST_AUTH.detectSessionInUrl).toBe(false);
+  });
+
+  it('puts the subscribe status and error on the debug line without a token', () => {
+    expect(formatChannelDetail('CHANNEL_ERROR', { message: 'JwtSignatureError: Failed to validate JWT signature' }))
+      .toBe('CHANNEL_ERROR: JwtSignatureError: Failed to validate JWT signature');
+    expect(formatChannelDetail('CHANNEL_ERROR', { message: 'bad eyJhbGciOiJIUzI1NiJ9.payload.sig token' }))
+      .toBe('CHANNEL_ERROR: bad [jwt] token');
+    expect(formatChannelDetail('TIMED_OUT', null)).toBe('TIMED_OUT');
   });
 });
 
