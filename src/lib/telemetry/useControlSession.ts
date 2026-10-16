@@ -27,9 +27,13 @@ import {
   interpretChannelStatus,
   LINK_RETRY_BASE_MS,
   linkRetryAction,
+  listenAccessToken,
   openChannel,
+  readyToJoin,
   retireChannels,
+  waitUntil,
 } from './channel-watch';
+import { publishableKeyOf } from '@/services/supabase-client';
 import { controlListenPlan, privateControlEnabled, privateListenTopics, shouldHoldCmdChannel, type CmdJoinEvent } from './channels';
 import {
   connectingLink,
@@ -149,6 +153,8 @@ export function useControlSession(
   const lagRef = useRef(0);
   const lastArriveRef = useRef(0);
   const slowRef = useRef(false);
+  /** In-flight `removeChannel` calls. The next join waits so `channel()` cannot reuse a topic. */
+  const releaseRef = useRef<Promise<unknown>>(Promise.resolve());
 
   if (botId !== joinedBot) {
     setJoinedBot(botId);
@@ -541,27 +547,66 @@ export function useControlSession(
       watch(ch, item.carriesLink, () => {
         if (sideRetry.has(item.topic)) return;
         const timer = window.setTimeout(() => {
-          sideRetry.delete(item.topic);
-          if (cancelled || membership.generation !== generationAtOpen) return;
-          const sideId = channelIds.get(ch);
-          if (sideId == null || !membership.live.has(sideId)) return;
-          membership = retireChannels(membership, [sideId], false);
-          const idx = channels.indexOf(ch);
-          if (idx >= 0) channels.splice(idx, 1);
-          void client.removeChannel(ch);
-          openListen(item);
+          void (async () => {
+            sideRetry.delete(item.topic);
+            if (cancelled || membership.generation !== generationAtOpen) return;
+            const sideId = channelIds.get(ch);
+            if (sideId == null || !membership.live.has(sideId)) return;
+            membership = retireChannels(membership, [sideId], false);
+            const idx = channels.indexOf(ch);
+            if (idx >= 0) channels.splice(idx, 1);
+            await socket.removeChannel(ch);
+            if (cancelled || membership.generation !== generationAtOpen) return;
+            openListen(item);
+          })();
         }, 1000);
         sideRetry.set(item.topic, timer);
       });
     };
 
+    const releaseListen = (list: readonly RealtimeChannel[]) => {
+      const job = Promise.all(list.map((ch) => socket.removeChannel(ch)));
+      const chained = releaseRef.current.then(() => job, () => job);
+      releaseRef.current = chained;
+      return chained;
+    };
+
+    const armLinkRetry = (detail: string) => {
+      setSubscribedAt(null);
+      setChannelFailed(true);
+      setRealtimeDown(true);
+      setChannelDetail(detail);
+      window.clearTimeout(retryTimer);
+      retryTimer = window.setTimeout(() => { if (!cancelled) void resubscribe(); }, delay);
+      delay = Math.min(15_000, delay * 2);
+    };
+
     const subscribe = async () => {
-      if (privateControl) {
-        const { data } = await client.auth.getSession();
-        const access = data.session?.access_token;
-        if (access) await client.realtime.setAuth(access);
-      }
+      await releaseRef.current;
       if (cancelled) return;
+      const operatorToken = privateControl
+        ? (await client.auth.getSession()).data.session?.access_token ?? null
+        : null;
+      if (cancelled) return;
+      const token = listenAccessToken(privateControl, publishableKeyOf(socket as unknown as { supabaseKey?: string }), operatorToken);
+      if (token) await socket.realtime.setAuth(token);
+      if (cancelled) return;
+      if (!socket.realtime.isConnected()) socket.realtime.connect();
+      const open = await waitUntil(
+        () => socket.realtime.isConnected(),
+        10_000,
+        () => Date.now(),
+        (ms) => new Promise((resolve) => { window.setTimeout(resolve, ms); }),
+      );
+      if (cancelled) return;
+      // connect() starts its own setAuth(). Say the token again so the join payload
+      // captured below includes it, then subscribe only on an open socket.
+      if (token) await socket.realtime.setAuth(token);
+      if (cancelled) return;
+      if (!readyToJoin(true, open && socket.realtime.isConnected())) {
+        armLinkRetry('TIMED_OUT');
+        return;
+      }
       const plan = controlListenPlan(botId, userId, privateControl ? '1' : '');
       for (const item of plan) openListen(item);
     };
@@ -574,10 +619,16 @@ export function useControlSession(
         if (id != null) ids.push(id);
       }
       membership = retireChannels(membership, ids);
-      for (const ch of channels) void socket.removeChannel(ch);
-      channels.length = 0;
+      const pending = channels.splice(0);
       publicChRef.current = null;
       leaveCmd();
+      await releaseListen(pending);
+      if (cancelled) return;
+      // A timed-out join may still be buffered on the cold socket. Drop it before the next attempt.
+      if (!privateControl) {
+        try { await socket.realtime.disconnect(); } catch { /* already closed */ }
+      }
+      if (cancelled) return;
       await subscribe();
       if (shouldHoldCmdChannel('resubscribe', roleRef.current)) joinCmd();
     };
@@ -597,7 +648,7 @@ export function useControlSession(
       membership = retireChannels(membership, ids);
       leaveCmd();
       publicChRef.current = null;
-      for (const ch of channels) void socket.removeChannel(ch);
+      void releaseListen(channels.splice(0));
     };
   }, [client, broadcastClient, userId, botId, privateControl, apply, syncCmd]);
 
