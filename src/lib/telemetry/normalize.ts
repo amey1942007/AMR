@@ -49,7 +49,7 @@ export function normalizeTelemetry(raw: unknown): NormState | null {
   const o = raw as Record<string, unknown>;
   if (o.t === 'map' || o.t === 'log' || o.t === 'hb') return null;
   const pose = vec3(o.pose);
-  const mapPose = vec3(o.mapPose ?? o.map_pose);
+  const mapPose = mapPoseOf(o.mapPose ?? o.map_pose);
   return {
     pose,
     mapPose,
@@ -113,6 +113,15 @@ function cameraOf(o: Record<string, unknown>): string | null {
 
 function num(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/** `map_pose` from the bridge is `[x, y]`. A 3-vector is kept; a 2-vector fills yaw with 0. */
+function mapPoseOf(v: unknown): [number, number, number] | null {
+  const three = vec3(v);
+  if (three) return three;
+  const two = vec2orNull(v);
+  if (!two) return null;
+  return [two[0], two[1], 0];
 }
 
 function vec3(v: unknown): [number, number, number] | null {

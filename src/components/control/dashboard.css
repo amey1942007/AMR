@@ -22,12 +22,14 @@
 .op :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .op .mono { font-family: ui-monospace, Consolas, monospace; }
 
+.op h1 { font-weight: 700; }
+.op-sticky { position: sticky; top: 0; z-index: 5; }
 .op-header {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
   padding: 10px 18px; background: var(--card); border-bottom: 1px solid var(--edge);
-  position: sticky; top: 0; z-index: 5;
+  position: static;
 }
-.op-header h1 { font-size: 17px; letter-spacing: .4px; font-weight: 650; }
+.op-header h1 { font-size: 17px; letter-spacing: .4px; font-weight: 700; }
 .op-switch { display: flex; gap: 6px; }
 .op-switch button {
   border-radius: 99px; padding: 3px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
@@ -142,12 +144,20 @@
 .op .banner .fill { flex: 1; min-width: 160px; }
 .op .cbar { height: 3px; background: var(--bar-track); border-radius: 3px; margin-top: 6px; overflow: hidden; }
 .op .cbar i { display: block; height: 100%; background: var(--acc); }
-.op .cbar.warn i, .op .count.warn { background: var(--warn); color: var(--warn); }
+.op .cbar.warn i { background: var(--warn); }
+.op .count.warn { color: var(--warn); background: transparent; }
+.op .waitline { display: flex; gap: 8px; align-items: baseline; }
 
 .op .prompt {
-  position: fixed; right: 14px; top: 62px; width: 360px; max-width: calc(100vw - 28px);
-  background: var(--card); border: 1px solid var(--run); border-radius: 12px; padding: 14px; z-index: 8;
+  position: static; width: 100%;
+  background: var(--card); border: 1px solid var(--run); border-radius: 12px; padding: 14px;
 }
+.op .helpdlg {
+  position: fixed; right: 14px; top: 80px; width: 360px; max-width: calc(100vw - 28px);
+  background: var(--card); border: 1px solid var(--edge); border-radius: 12px; padding: 14px; z-index: 8;
+}
+.op .helpdlg h3 { font-size: 14px; font-weight: 700; }
+.op .helpdlg p { color: var(--dim); font-size: 13px; margin: 4px 0 8px; }
 .op .prompt + .prompt { margin-top: 8px; }
 .op .prompt h3 { font-size: 14px; font-weight: 700; }
 .op .prompt p { color: var(--dim); font-size: 13px; margin: 4px 0 8px; }
@@ -186,7 +196,9 @@
 @keyframes op-pulse { from { transform: scale(.98); } to { transform: scale(1); } }
 
 @media (max-width: 900px) {
-  .op-grid { grid-template-columns: 1fr; }
+  .op-grid { display: flex; flex-direction: column; }
+  .op .right { display: contents; }
+  .op .banner { order: -1; }
   .op-header { align-items: flex-start; }
 }
 @media (prefers-reduced-motion: reduce) {

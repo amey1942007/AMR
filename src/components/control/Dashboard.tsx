@@ -8,7 +8,7 @@ import { asset } from '@/lib/asset';
 import { getAuthClient } from '@/services/supabase-client';
 import { BOTS, HEARTBEAT_OFFLINE_MS, type BotId, type ControlCommand } from '@/lib/telemetry/protocol';
 import { useControlSession } from '@/lib/telemetry/useControlSession';
-import { clampLinAng, clampToolParams, JOY_HZ, NUDGE_REPEAT_MS, ESTOP_RETRY_MS } from '@/lib/telemetry/commands';
+import { clampLinAng, clampToolParams, commandRejectText, JOY_HZ, NUDGE_REPEAT_MS, ESTOP_RETRY_MS } from '@/lib/telemetry/commands';
 import { COPY, countdownFraction, formatCountdown, initialOf, secondsRemaining } from '@/lib/control/access';
 import type { NormState } from '@/lib/telemetry/normalize';
 import { LiveCanvas } from './LiveCanvas';
@@ -108,11 +108,19 @@ export function Dashboard() {
   const canEdit = controller && estop === 'ready' && !offline && !tel.heartbeatStale && !tel.realtimeDown;
   const bot = BOTS.find((b) => b.id === botId)!;
 
+  const noteReject = useCallback((error: string | undefined) => {
+    const text = commandRejectText(error);
+    if (!text) return;
+    toast(text, 4000);
+    tel.pushLog('error', text);
+  }, [tel, toast]);
+
   const send = useCallback(async (cmd: ControlCommand) => {
     const res = await tel.sendCommand(cmd);
-    if (!res.ok && cmd.type !== 'estop') tel.pushLog('error', res.error || 'Command failed');
+    noteReject(res.error);
+    if (!res.ok && cmd.type !== 'estop' && !commandRejectText(res.error)) tel.pushLog('error', res.error || 'Command failed');
     return res.ok;
-  }, [tel]);
+  }, [tel, noteReject]);
 
   const fireEstop = useCallback(() => {
     if (!controller) return;
@@ -125,6 +133,12 @@ export function Dashboard() {
       if (ok.ok) {
         setEstop('latched');
         tel.pushLog('error', COPY.estopLog);
+        return;
+      }
+      const rejected = commandRejectText(ok.error);
+      if (rejected) {
+        toast(rejected, 4000);
+        tel.pushLog('error', rejected);
         return;
       }
       if (!told) { told = true; toast(COPY.estopFail, 4000); }
@@ -313,8 +327,10 @@ export function Dashboard() {
 
   return (
     <div className="op">
-      {(tel.heartbeatStale || tel.realtimeDown) && <div className="op-reconnect" role="status">Reconnecting…</div>}
-      {controller && estop === 'latched' && <div className="op-estop-bar" role="status">EMERGENCY STOP ACTIVE</div>}
+      <div className="op-sticky">
+      {(tel.heartbeatStale || tel.realtimeDown || tel.heartbeatError) && (
+        <div className="op-reconnect" role="status">{tel.heartbeatError || 'Reconnecting…'}</div>
+      )}
       <header className="op-header">
         <h1>🤖 {bot.label}</h1>
         <div className="op-switch" role="group" aria-label="Bot">
@@ -323,9 +339,9 @@ export function Dashboard() {
           ))}
         </div>
         <span className={`pill ${overallKind}`}>{overall}</span>
-        {tel.frame?.tool && <span className="pill run">⏳ {tel.frame.tool}</span>}
-        {tel.frame?.vision && <span className="pill vision">👁 VISION ON</span>}
-        {tel.frame?.saving && <span className="pill saving">💾 SAVING MAP…</span>}
+        {!offline && tel.frame?.tool && <span className="pill run">⏳ {tel.frame.tool}</span>}
+        {!offline && tel.frame?.vision && <span className="pill vision">👁 VISION ON</span>}
+        {!offline && tel.frame?.saving && <span className="pill saving">💾 SAVING MAP…</span>}
         <div className="op-grow">
           {tel.joining ? <span className="skel" aria-hidden /> : (
             <span className="who" title="Currently driving">
@@ -355,6 +371,8 @@ export function Dashboard() {
           )}
         </div>
       </header>
+      {controller && estop === 'latched' && <div className="op-estop-bar" role="status">EMERGENCY STOP ACTIVE</div>}
+      </div>
 
       {controller && requests.length > 0 && (
         <div className="stack">
@@ -487,7 +505,7 @@ export function Dashboard() {
 
       <div className="toasts" aria-live="polite">{toasts[0] && <div className="toast" role="status">{toasts[0].text}</div>}</div>
       {help && (
-        <div className="prompt" role="dialog" aria-label="Keyboard shortcuts" style={{ top: 80 }}>
+        <div className="helpdlg" role="dialog" aria-label="Keyboard shortcuts">
           <h3>Keyboard</h3>
           <p>W A S D or arrows drive. N nav, M no-go, C cancel, +/− zoom, G give, K keep. Space or Esc emergency-stops (not while typing).</p>
           <button type="button" className="btn" onClick={() => setHelp(false)}>Close</button>
@@ -543,7 +561,7 @@ function AccessBanner(props: {
       <div className="banner warn" role="status">
         <span className="spin" aria-hidden />
         <div className="fill">
-          <div>Waiting for {props.waitingFor ?? 'the driver'}… <span className="mono">{formatCountdown(left)}</span></div>
+          <div className="waitline">Waiting for {props.waitingFor ?? 'the driver'}… <span className="mono" aria-live="off">{formatCountdown(left)}</span></div>
           <div className="cbar"><i style={{ width: `${countdownFraction(props.my?.expiresAt, props.now) * 100}%` }} /></div>
         </div>
         <button type="button" className="textbtn" onClick={props.onCancel}>Cancel</button>

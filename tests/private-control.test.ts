@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { privateControlEnabled, privateTopics, publicChannel } from '@/lib/telemetry/channels';
+import { privateControlEnabled, privateListenTopics, privateTopics, publicChannel, shouldHoldCmdChannel } from '@/lib/telemetry/channels';
 import {
+  alignedNow,
   clampLinAng,
   clampToolParams,
+  commandRejectText,
   createSeqCounter,
+  estopUsesRpc,
   isContinuous,
   payloadHasToken,
   privateCmdPayload,
   publicCommandEnvelope,
+  serverOffsetFromLease,
   shouldFastPoll,
 } from '@/lib/telemetry/commands';
 import {
@@ -44,19 +48,23 @@ describe('private control flag', () => {
 });
 
 describe('command wire format', () => {
-  it('increases seq inside one epoch and restarts at 1', () => {
-    const seq = createSeqCounter();
-    expect(seq.next(4)).toBe(1);
-    expect(seq.next(4)).toBe(2);
-    expect(seq.next(5)).toBe(1);
+  it('uses a clock seq so a new epoch cannot go backwards', () => {
+    let clock = 1_700_000_000_000;
+    const seq = createSeqCounter(() => clock);
+    expect(seq.next(4)).toBe(clock);
+    clock += 5;
+    expect(seq.next(4)).toBe(clock);
+    const held = seq.next(4);
+    expect(held).toBe(clock + 1);
+    clock = 1_700_000_000_100;
+    expect(seq.next(5)).toBe(clock);
   });
 
-  it('puts the token only on the private payload', () => {
+  it('puts the token only on the private payload, with both joy shapes', () => {
     const joy = { type: 'joy' as const, a: [0, 1, 0, 0, 0, 0, 0, 0], b: 1 };
     const priv = privateCmdPayload(joy, { epoch: 3, token: 'lease-token', seq: 2, ts: 9 });
-    expect(priv).toMatchObject({ epoch: 3, token: 'lease-token', seq: 2, ts: 9, type: 'joy', b: 1 });
+    expect(priv).toMatchObject({ epoch: 3, token: 'lease-token', seq: 2, ts: 9, type: 'joy', b: 1, axes: joy.a, buttons: 1 });
     expect(payloadHasToken(priv)).toBe(true);
-    expect(priv).not.toHaveProperty('axes');
 
     const pub = publicCommandEnvelope('amr4', joy, { id: 'c1', epoch: 3, seq: 2, ts: 9 });
     expect(payloadHasToken(pub)).toBe(false);
@@ -80,6 +88,43 @@ describe('command wire format', () => {
     expect(clampToolParams('imu_calibration', { speed: 2, rotations: 2 })).toBeNull();
     expect(clampToolParams('drive_distance', { distance: 1, maxVel: 0.3 })).toEqual({ distance: '1', max_vel: '0.3' });
     expect(clampToolParams('drive_distance', { distance: 9, maxVel: 0.3 })).toBeNull();
+  });
+
+  it('keeps :cmd off the listen set and off viewers', () => {
+    expect(privateListenTopics('amr4', 'uid-1')).toEqual({
+      status: 'bot:amr4:status',
+      ctl: 'bot:amr4:ctl',
+      notify: 'user:uid-1:notify',
+    });
+    expect(shouldHoldCmdChannel('join_bot', 'controller')).toBe(true);
+    expect(shouldHoldCmdChannel('join_bot', 'viewer')).toBe(false);
+    expect(shouldHoldCmdChannel('control_gained', 'controller')).toBe(true);
+    expect(shouldHoldCmdChannel('accept', 'controller')).toBe(true);
+    expect(shouldHoldCmdChannel('heartbeat', 'controller')).toBe(true);
+    expect(shouldHoldCmdChannel('heartbeat', 'viewer')).toBe(false);
+    expect(shouldHoldCmdChannel('resubscribe', 'controller')).toBe(true);
+    expect(shouldHoldCmdChannel('resubscribe', 'viewer')).toBe(false);
+    expect(shouldHoldCmdChannel('control_lost', 'controller')).toBe(false);
+  });
+
+  it('falls back to send_command when :cmd is down or the send fails', () => {
+    expect(estopUsesRpc({ cmdSubscribed: false })).toBe(true);
+    expect(estopUsesRpc({ cmdSubscribed: true })).toBe(false);
+    expect(estopUsesRpc({ cmdSubscribed: true, channelResult: 'ok' })).toBe(false);
+    expect(estopUsesRpc({ cmdSubscribed: true, channelResult: 'timed out' })).toBe(true);
+    expect(estopUsesRpc({ cmdSubscribed: false, channelResult: 'ok' })).toBe(true);
+  });
+
+  it('shows the send_command limit phrases and aligns time from the lease', () => {
+    expect(commandRejectText('rate limited')).toBe('rate limited');
+    expect(commandRejectText('ERROR: command too large')).toBe('command too large');
+    expect(commandRejectText('not_controller')).toBeNull();
+    const received = Date.parse('2026-10-16T00:00:00Z');
+    expect(serverOffsetFromLease('2026-10-16T00:00:15.000Z', received)).toBe(0);
+    expect(serverOffsetFromLease('2026-10-16T00:00:15.250Z', received)).toBe(250);
+    expect(serverOffsetFromLease(null, received)).toBeNull();
+    expect(alignedNow(1_000, 250)).toBe(1_250);
+    expect(alignedNow(1_000, null)).toBe(1_000);
   });
 
   it('polls faster while a request is in flight', () => {
@@ -165,5 +210,9 @@ describe('telemetry normalizer', () => {
     expect(snake?.sys.mem).toEqual([3, 4]);
     expect(snake?.sys.up).toBe('2h');
     expect(snake?.sys.temp).toBe(40);
+
+    const xy = normalizeTelemetry({ map_pose: [0.82, 0.28] });
+    expect(xy?.mapPose).toEqual([0.82, 0.28, 0]);
+    expect(xy?.mapPose ? `${xy.mapPose[0].toFixed(2)}, ${xy.mapPose[1].toFixed(2)}` : '').toBe('0.82, 0.28');
   });
 });

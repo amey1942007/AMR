@@ -5,13 +5,16 @@ import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import {
   HEARTBEAT_MS,
   PENDING_POLL_MS,
+  alignedNow,
   createSeqCounter,
+  estopUsesRpc,
   isContinuous,
   privateCmdPayload,
   publicCommandEnvelope,
+  serverOffsetFromLease,
   shouldFastPoll,
 } from './commands';
-import { privateControlEnabled, privateTopics, publicChannel } from './channels';
+import { privateControlEnabled, privateListenTopics, publicChannel, shouldHoldCmdChannel, type CmdJoinEvent } from './channels';
 import type { BotId, ConsoleLogLine, ControlCommand, MapFrame } from './protocol';
 import { normalizeMap, normalizeTelemetry, type NormState } from './normalize';
 import {
@@ -35,6 +38,8 @@ export interface ControlSession {
   myRequest: MyRequest | null;
   retryAfter: number | null;
   requestError: string | null;
+  /** Last join/heartbeat RPC error. Null after a successful heartbeat. */
+  heartbeatError: string | null;
   heartbeatStale: boolean;
   realtimeDown: boolean;
   frame: NormState | null;
@@ -71,6 +76,7 @@ export function useControlSession(
   const [myRequest, setMyRequest] = useState<MyRequest | null>(null);
   const [retryAfter, setRetryAfter] = useState<number | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
+  const [heartbeatError, setHeartbeatError] = useState<string | null>(null);
   const [heartbeatAt, setHeartbeatAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [realtimeDown, setRealtimeDown] = useState(false);
@@ -86,7 +92,17 @@ export function useControlSession(
   const seqRef = useRef(createSeqCounter());
   const pollRef = useRef({ my: null as string | null, incoming: 0 });
   const cmdChRef = useRef<RealtimeChannel | null>(null);
+  const cmdSubscribedRef = useRef(false);
+  const joinCmdRef = useRef<() => void>(() => {});
+  const leaveCmdRef = useRef<() => void>(() => {});
+  const offsetRef = useRef<number | null>(null);
   const publicChRef = useRef<RealtimeChannel | null>(null);
+
+  const syncCmd = useCallback((event: CmdJoinEvent, role: 'controller' | 'viewer' | null) => {
+    if (!privateControl) return;
+    if (shouldHoldCmdChannel(event, role)) joinCmdRef.current();
+    else leaveCmdRef.current();
+  }, [privateControl]);
 
   const pushLog = useCallback((level: string, text: string) => {
     const line: ConsoleLogLine = {
@@ -100,9 +116,14 @@ export function useControlSession(
     });
   }, []);
 
-  const apply = useCallback((raw: unknown) => {
+  const apply = useCallback((raw: unknown, event: CmdJoinEvent = 'heartbeat') => {
     const view = parseHeartbeat(raw);
     if (!view) return;
+    if (view.role === 'controller') {
+      const off = serverOffsetFromLease(view.leaseExpiresAt, Date.now());
+      if (off != null) offsetRef.current = off;
+    }
+    syncCmd(event, view.role);
     roleRef.current = view.role;
     epochRef.current = view.epoch;
     tokenRef.current = view.role === 'controller' ? view.token : null;
@@ -120,7 +141,8 @@ export function useControlSession(
     setRetryAfter(view.retryAfter);
     setHeartbeatAt(Date.now());
     setJoining(false);
-  }, []);
+    setHeartbeatError(null);
+  }, [syncCmd]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 250);
@@ -155,14 +177,19 @@ export function useControlSession(
     const beat = async () => {
       const { data, error } = await client.rpc('bot_heartbeat', { p_bot: bot });
       if (cancelled) return;
-      if (error) return;
-      apply(data);
+      if (error) {
+        setHeartbeatError(error.message || 'Heartbeat failed');
+        return;
+      }
+      apply(data, 'heartbeat');
     };
     void (async () => {
       const joined = await client.rpc('join_bot', { p_bot: bot });
       if (cancelled) return;
-      if (joined.error) setRequestError('join');
-      else apply(joined.data);
+      if (joined.error) {
+        setRequestError('join');
+        setHeartbeatError(joined.error.message || 'Could not join the bot');
+      } else apply(joined.data, 'join_bot');
       await beat();
     })();
     let timer = 0;
@@ -210,6 +237,44 @@ export function useControlSession(
     };
     const onHb = () => setLastTelemetryAt((t) => t ?? Date.now());
 
+    const noteBeat = (error: { message?: string } | null, data: unknown, event: CmdJoinEvent) => {
+      if (cancelled) return;
+      if (error) { setHeartbeatError(error.message || 'Heartbeat failed'); return; }
+      apply(data, event);
+    };
+
+    const leaveCmd = () => {
+      cmdSubscribedRef.current = false;
+      const ch = cmdChRef.current;
+      cmdChRef.current = null;
+      if (ch) void client.removeChannel(ch);
+    };
+
+    const joinCmd = () => {
+      if (cancelled || !privateControl || cmdChRef.current) return;
+      const topic = `bot:${botId}:cmd`;
+      const cmd = client.channel(topic, { config: { private: true } });
+      cmdChRef.current = cmd;
+      cmdSubscribedRef.current = false;
+      cmd.subscribe((status) => {
+        if (cancelled) return;
+        if (cmdChRef.current !== cmd) return;
+        if (status === 'SUBSCRIBED') { cmdSubscribedRef.current = true; return; }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          cmdSubscribedRef.current = false;
+          cmdChRef.current = null;
+          void client.removeChannel(cmd);
+          if (roleRef.current !== 'controller') return;
+          window.setTimeout(() => {
+            if (!cancelled && roleRef.current === 'controller' && !cmdChRef.current) joinCmd();
+          }, 1000);
+        }
+      });
+    };
+
+    joinCmdRef.current = joinCmd;
+    leaveCmdRef.current = leaveCmd;
+
     const subscribe = async () => {
       const { data } = await client.auth.getSession();
       const access = data.session?.access_token;
@@ -230,7 +295,7 @@ export function useControlSession(
       };
 
       if (privateControl) {
-        const topics = privateTopics(botId, userId);
+        const topics = privateListenTopics(botId, userId);
         const status = track(client.channel(topics.status, { config: { private: true } }));
         status.on('broadcast', { event: 'telemetry' }, onTelemetry);
         status.on('broadcast', { event: 'map' }, onMap);
@@ -238,33 +303,42 @@ export function useControlSession(
         status.on('broadcast', { event: 'hb' }, onHb);
         watch(status);
         const ctl = track(client.channel(topics.ctl, { config: { private: true } }));
-        ctl.on('broadcast', { event: 'control' }, () => { void client.rpc('bot_heartbeat', { p_bot: botId }).then(({ data }) => apply(data)); });
+        ctl.on('broadcast', { event: 'control' }, () => {
+          void client.rpc('bot_heartbeat', { p_bot: botId }).then(({ data: beat, error }) => noteBeat(error, beat, 'heartbeat'));
+        });
         watch(ctl);
         const notify = track(client.channel(topics.notify, { config: { private: true } }));
         notify.on('broadcast', { event: 'control_lost' }, () => {
           const token = tokenRef.current;
           const epochNow = epochRef.current;
           const ch = cmdChRef.current;
-          if (roleRef.current === 'controller' && token && ch) {
+          if (roleRef.current === 'controller' && token && ch && cmdSubscribedRef.current) {
             const seq = seqRef.current.next(epochNow);
             void ch.send({
               type: 'broadcast',
               event: 'command',
-              payload: privateCmdPayload({ type: 'nudge', lin: 0, ang: 0 }, { epoch: epochNow, token, seq, ts: Date.now() }),
+              payload: privateCmdPayload({ type: 'nudge', lin: 0, ang: 0 }, { epoch: epochNow, token, seq, ts: alignedNow(Date.now(), offsetRef.current) }),
             });
           }
           tokenRef.current = null;
           roleRef.current = 'viewer';
           setRole('viewer');
-          void client.rpc('bot_heartbeat', { p_bot: botId }).then(({ data }) => apply(data));
+          leaveCmd();
+          void client.rpc('bot_heartbeat', { p_bot: botId }).then(({ data: beat, error }) => noteBeat(error, beat, 'heartbeat'));
         });
-        for (const ev of ['control_gained', 'control_result', 'control_request'] as const) {
-          notify.on('broadcast', { event: ev }, () => { void client.rpc('bot_heartbeat', { p_bot: botId }).then(({ data }) => apply(data)); });
-        }
+        notify.on('broadcast', { event: 'control_gained' }, () => {
+          syncCmd('control_gained', 'controller');
+          void client.rpc('bot_heartbeat', { p_bot: botId }).then(({ data: beat, error }) => noteBeat(error, beat, 'heartbeat'));
+        });
+        notify.on('broadcast', { event: 'control_result' }, ({ payload }) => {
+          const status = payload && typeof payload === 'object' ? (payload as { status?: string }).status : undefined;
+          if (status === 'accepted') syncCmd('accept', 'controller');
+          void client.rpc('bot_heartbeat', { p_bot: botId }).then(({ data: beat, error }) => noteBeat(error, beat, 'heartbeat'));
+        });
+        notify.on('broadcast', { event: 'control_request' }, () => {
+          void client.rpc('bot_heartbeat', { p_bot: botId }).then(({ data: beat, error }) => noteBeat(error, beat, 'heartbeat'));
+        });
         watch(notify);
-        const cmd = track(client.channel(topics.cmd, { config: { private: true } }));
-        cmdChRef.current = cmd;
-        watch(cmd);
       } else {
         const ch = track(client.channel(publicChannel(botId)));
         publicChRef.current = ch;
@@ -279,26 +353,37 @@ export function useControlSession(
     const resubscribe = async () => {
       for (const ch of channels) void client.removeChannel(ch);
       channels.length = 0;
-      cmdChRef.current = null;
       publicChRef.current = null;
+      leaveCmd();
       await subscribe();
+      if (shouldHoldCmdChannel('resubscribe', roleRef.current)) joinCmd();
     };
 
     void subscribe();
     return () => {
       cancelled = true;
       window.clearTimeout(retryTimer);
-      cmdChRef.current = null;
+      leaveCmd();
       publicChRef.current = null;
       for (const ch of channels) void client.removeChannel(ch);
     };
-  }, [client, userId, botId, privateControl, apply]);
+  }, [client, userId, botId, privateControl, apply, syncCmd]);
 
   const refresh = useCallback(async () => {
     if (!client) return;
-    const { data } = await client.rpc('bot_heartbeat', { p_bot: botId });
+    const { data, error } = await client.rpc('bot_heartbeat', { p_bot: botId });
+    if (error) { setHeartbeatError(error.message || 'Heartbeat failed'); return; }
     apply(data);
   }, [client, botId, apply]);
+
+  const rpcCommand = useCallback(async (cmd: ControlCommand, epochNow: number, seq: number) => {
+    if (!client) return { ok: false, error: 'no-client' };
+    const { data, error } = await client.rpc('send_command', { p_bot: botId, p_epoch: epochNow, p_seq: seq, p_cmd: cmd });
+    if (error) return { ok: false, error: error.message };
+    const body = data as { ok?: boolean; error?: string } | null;
+    if (body && body.ok === false) return { ok: false, error: body.error || 'rejected' };
+    return { ok: true };
+  }, [client, botId]);
 
   const sendCommand = useCallback(async (cmd: ControlCommand) => {
     if (roleRef.current !== 'controller') return { ok: false, error: 'viewer' };
@@ -306,21 +391,26 @@ export function useControlSession(
     const token = tokenRef.current;
     let seq = 0;
     try { seq = seqRef.current.next(epochNow); } catch { return { ok: false, error: 'epoch' }; }
-    const ts = Date.now();
+    const ts = alignedNow(Date.now(), offsetRef.current);
     if (privateControl) {
+      if (cmd.type === 'estop') {
+        const ch = cmdChRef.current;
+        const subscribed = Boolean(cmdSubscribedRef.current && ch && token);
+        if (!estopUsesRpc({ cmdSubscribed: subscribed })) {
+          const res = await ch!.send({ type: 'broadcast', event: 'command', payload: privateCmdPayload(cmd, { epoch: epochNow, token: token!, seq, ts }) });
+          if (!estopUsesRpc({ cmdSubscribed: true, channelResult: res })) return { ok: true };
+          try { seq = seqRef.current.next(epochNow); } catch { return { ok: false, error: 'epoch' }; }
+        }
+        return rpcCommand({ type: 'estop' }, epochNow, seq);
+      }
       if (!token) return { ok: false, error: 'no-token' };
       if (isContinuous(cmd)) {
         const ch = cmdChRef.current;
-        if (!ch) return { ok: false, error: 'no-channel' };
+        if (!ch || !cmdSubscribedRef.current) return { ok: false, error: 'no-channel' };
         const res = await ch.send({ type: 'broadcast', event: 'command', payload: privateCmdPayload(cmd, { epoch: epochNow, token, seq, ts }) });
         return { ok: res === 'ok', error: res === 'ok' ? undefined : 'send' };
       }
-      if (!client) return { ok: false, error: 'no-client' };
-      const { data, error } = await client.rpc('send_command', { p_bot: botId, p_epoch: epochNow, p_seq: seq, p_cmd: cmd });
-      if (error) return { ok: false, error: error.message };
-      const body = data as { ok?: boolean; error?: string } | null;
-      if (body && body.ok === false) return { ok: false, error: body.error || 'rejected' };
-      return { ok: true };
+      return rpcCommand(cmd, epochNow, seq);
     }
     const ch = publicChRef.current;
     if (!ch) return { ok: false, error: 'no-channel' };
@@ -330,7 +420,7 @@ export function useControlSession(
       payload: publicCommandEnvelope(botId, cmd, { id: crypto.randomUUID(), epoch: epochNow, seq, ts }),
     });
     return { ok: res === 'ok', error: res === 'ok' ? undefined : 'send' };
-  }, [privateControl, client, botId]);
+  }, [privateControl, rpcCommand, botId]);
 
   const requestControl = useCallback(async () => {
     if (!client) { setRequestError('network'); return; }
@@ -360,6 +450,7 @@ export function useControlSession(
         tokenRef.current = null;
         roleRef.current = 'viewer';
         setRole('viewer');
+        syncCmd('control_lost', 'viewer');
       }
       await refresh();
       return { kind, name };
@@ -369,7 +460,7 @@ export function useControlSession(
       const epochNow = epochRef.current;
       if (token) {
         const seq = seqRef.current.next(epochNow);
-        const ts = Date.now();
+        const ts = alignedNow(Date.now(), offsetRef.current);
         const ch = privateControl ? cmdChRef.current : publicChRef.current;
         if (ch) {
           const payload = privateControl
@@ -381,10 +472,11 @@ export function useControlSession(
       tokenRef.current = null;
       roleRef.current = 'viewer';
       setRole('viewer');
+      syncCmd('control_lost', 'viewer');
     }
     await refresh();
     return { kind: 'ok' as const, name };
-  }, [client, botId, privateControl, pendingRequests, refresh]);
+  }, [client, botId, privateControl, pendingRequests, refresh, syncCmd]);
 
   const heartbeatStale = heartbeatAt != null && now - heartbeatAt > 10_000;
 
@@ -399,6 +491,7 @@ export function useControlSession(
     myRequest,
     retryAfter,
     requestError,
+    heartbeatError,
     heartbeatStale,
     realtimeDown,
     frame,

@@ -53,18 +53,25 @@ export interface SeqCounter {
   next(epoch: number): number;
 }
 
-/** `seq` starts at 1 and increases for one epoch. A new epoch starts again at 1. */
-export function createSeqCounter(): SeqCounter {
+/**
+ * `seq` is a millisecond timestamp, then +1 for later commands in that epoch.
+ * A reloaded page starts at the current clock, so it cannot go backwards
+ * against rows already stored for this epoch.
+ */
+export function createSeqCounter(now: () => number = Date.now): SeqCounter {
   let epoch = Number.NaN;
   let seq = 0;
   return {
     next(nextEpoch: number) {
       if (!Number.isFinite(nextEpoch)) throw new Error('epoch required');
+      const tick = Math.floor(now());
+      const base = Number.isFinite(tick) && tick > 0 ? tick : 0;
       if (nextEpoch !== epoch) {
         epoch = nextEpoch;
-        seq = 0;
+        seq = base;
+        return seq;
       }
-      seq += 1;
+      seq = Math.max(seq + 1, base);
       return seq;
     },
   };
@@ -77,9 +84,42 @@ export interface WireMeta {
   ts: number;
 }
 
-/** Payload for the private `bot:<id>:cmd` topic. Includes the token. */
+/** Payload for the private `bot:<id>:cmd` topic. Includes the token. Joy carries both `{a,b}` and `{axes,buttons}`. */
 export function privateCmdPayload(cmd: ControlCommand, meta: WireMeta): Record<string, unknown> {
-  return { epoch: meta.epoch, token: meta.token, seq: meta.seq, ts: meta.ts, ...commandBody(cmd) };
+  return { epoch: meta.epoch, token: meta.token, seq: meta.seq, ts: meta.ts, ...commandBody(cmd, true) };
+}
+
+/** Lease RPCs set `lease_expires_at` to server now + 15s. */
+export const LEASE_MS = 15_000;
+
+/** Milliseconds to add to `Date.now()` so command timestamps match server time. Null when the lease time is unusable. */
+export function serverOffsetFromLease(leaseExpiresAt: string | null | undefined, receivedAt: number): number | null {
+  if (!leaseExpiresAt) return null;
+  const lease = Date.parse(leaseExpiresAt);
+  if (!Number.isFinite(lease)) return null;
+  return lease - LEASE_MS - receivedAt;
+}
+
+export function alignedNow(localNow: number, offsetMs: number | null | undefined): number {
+  return localNow + (offsetMs ?? 0);
+}
+
+/**
+ * E-STOP uses `:cmd` only while that channel is SUBSCRIBED.
+ * Otherwise, and when the broadcast send fails, it must go through `send_command`.
+ */
+export function estopUsesRpc(input: { cmdSubscribed: boolean; channelResult?: 'ok' | string | null }): boolean {
+  if (!input.cmdSubscribed) return true;
+  if (input.channelResult != null && input.channelResult !== 'ok') return true;
+  return false;
+}
+
+/** Visible copy when `send_command` raises one of the limit errors. Other messages stay as returned. */
+export function commandRejectText(message: string | null | undefined): string | null {
+  if (!message) return null;
+  if (/rate limited/i.test(message)) return 'rate limited';
+  if (/command too large/i.test(message)) return 'command too large';
+  return null;
 }
 
 /**

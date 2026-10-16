@@ -89,6 +89,16 @@ describe('supabase adapter hardening', () => {
     const s = createSupabaseContact({ url, key: 'sb_publishable_x', kv: kv(), timeoutMs: 20, insert: () => new Promise(() => {}) });
     expect((await s.submit(p)).status).toBe('error');
   });
+  it('inserts the row and does not select it back', () => {
+    const src = readFileSync('src/services/adapters/contact.supabase.ts', 'utf8');
+    const code = src
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('//'))
+      .join('\n');
+    expect(code).toMatch(/\.insert\(row\)/);
+    expect(code).not.toMatch(/\.select\s*\(/);
+  });
   it('db error → error', async () => {
     const s = createSupabaseContact({ url, key: 'sb_publishable_x', kv: kv(), insert: async () => ({ error: { message: 'x' } }) });
     expect((await s.submit(p)).status).toBe('error');

@@ -13,13 +13,26 @@ Operator sign-in is email and password. Driving rights come from the control lea
 
 Do not set the flag in the production Pages build until Review & Debugger OKs the cut-over and the bridge is subscribed to the private topics. The lease RPCs run in both modes. The control token is sent only on the private `:cmd` topic. The public `command` broadcast never includes it.
 
-With the flag off, discrete commands are broadcast on the public channel (the current bridge does not read `send_command`). With the flag on, continuous commands (`estop`, `nudge`, `joy`, `drive`) go to `:cmd` and discrete commands go through the `send_command` RPC.
+With the flag off, discrete commands are broadcast on the public channel (the current bridge does not read `send_command`). With the flag on, continuous commands (`nudge`, `joy`, `drive`) go to `:cmd` and discrete commands go through the `send_command` RPC. E-STOP uses `:cmd` only while that channel is `SUBSCRIBED`. If it is not subscribed, or the broadcast send fails, E-STOP falls back to `send_command` with `{type:'estop'}`. `estop` is exempt from the 30-per-10s rate limit; `command too large` can still be raised.
+
+Viewers do not subscribe to `bot:<id>:cmd`. The client joins `:cmd` only after a controller-shaped result: `join_bot` when the role is controller, `control_gained`, or `control_result` with status `accepted`. It leaves `:cmd` on `control_lost` and when Give sets the role to viewer. A listen-channel reconnect (`:status`, `:ctl`, `:notify`) does not open `:cmd`. It rejoins `:cmd` only if the role is still controller. A `:cmd` channel error retries that topic alone and does not resubscribe the listen channels.
+
+`seq` is a millisecond timestamp, then +1 for later commands in the same epoch, so a reloaded page does not go backwards against rows already stored. Command `ts` adds the offset learned from the controller's own heartbeat: `lease_expires_at` is server now plus 15 seconds. The offset is updated only while the role is controller. A viewer heartbeat's lease belongs to the current driver and can be a few seconds stale.
+
+`send_command` can reject with `rate limited` or `command too large`. The panel toasts that exact text and writes it to the console. A failed join or heartbeat shows the RPC message in the reconnect bar.
+
+## Auth redirect allowlist
+
+These exact URLs must be in the Supabase Auth redirect URL allowlist, or invite, recovery, and sign-in redirects will be rejected:
+
+- `https://amrslam.tech/set-password`
+- `https://amrslam.tech/sign-in`
 
 ## Known mismatches (do not guess past these)
 
 - The Ros_lidar_bot `hardware` branch `amr-bridge/amr_telemetry_bridge/bridge.py` was not readable (GitHub 404). Keys were checked against the bridge in this repo.
 - That bridge broadcasts camelCase (`mapPose`, `yoloDet`, `cameraJpegB64` as raw base64). The dashboard spec assumed snake_case SSE keys and an unnamed JPEG. The panel accepts both. Camera bytes are shown as `data:image/jpeg;base64,…`.
-- Joy on the public channel is sent as `{a,b}` and as `{axes,buttons}`, because this bridge reads `axes` / `buttons`. The private payload uses `{a,b}` plus `{epoch,token,seq,ts}`.
+- Joy on both the public channel and the private `:cmd` payload is sent as `{a,b}` and as `{axes,buttons}`, because this bridge reads `axes` / `buttons` and the updated bridge accepts `a` / `b`. The private payload also carries `{epoch,token,seq,ts}`.
 - This bridge drops every command except `set_rate` when `from.rank` is missing or below 1. The website no longer sends `from.rank`. Public-path drive commands will be ignored until the bridge is updated or the private flag is turned on against a bridge that does not check rank. Telemetry on the public channel still displays.
 - `seq_*` waypoint commands are not in the `send_command` allowlist. The waypoint card is read-only. Those commands were not added.
 - `drive` has no defined dashboard payload, so there is no drive-distance teleop control beyond the Tools card (`run_tool`). `set_rate` is accepted by this bridge but has no header control.
@@ -72,4 +85,8 @@ Dashboard
 Flag off vs on
 
 - [ ] Flag unset: browser subscribes to `amr-bot-amr4` or `amr-bot-hardware-bot`. Command payloads have no `token` field.
-- [ ] Flag on: browser subscribes to the four private topics and calls `send_command` for nav, tools, vision, save map, and blacklist. `:cmd` frames include epoch, token, seq, and ts, and seq increases inside one epoch.
+- [ ] Flag on, viewer: browser subscribes to `:status`, `:ctl`, and `user:<uid>:notify` only. It does not open `:cmd`.
+- [ ] Flag on, controller: `:cmd` is joined, and frames include epoch, token, seq, and ts. Seq is a clock value and increases inside one epoch. Nav, tools, vision, save map, and blacklist go through `send_command`.
+- [ ] Flag on, E-STOP while `:cmd` is down, or after a failed broadcast: the panel calls `send_command` with `{type:'estop'}`.
+- [ ] A `send_command` rejection of `rate limited` or `command too large` is shown in a toast and on the console.
+- [ ] `https://amrslam.tech/set-password` and `https://amrslam.tech/sign-in` are on the Supabase Auth redirect allowlist.

@@ -28,3 +28,25 @@ export function privateTopics(botId: BotId, userId: string) {
     notify: `user:${userId}:notify`,
   } as const;
 }
+
+export type ControlRole = 'controller' | 'viewer' | null;
+
+/** Why the client is deciding whether to hold `bot:<id>:cmd`. */
+export type CmdJoinEvent = 'join_bot' | 'control_gained' | 'accept' | 'resubscribe' | 'control_lost' | 'heartbeat';
+
+/**
+ * Viewers never subscribe to `:cmd`. Join only as controller, and only for a
+ * controller-shaped event. `control_lost` always drops it. A listen-channel
+ * reconnect uses `resubscribe`, which rejoins `:cmd` only while still controller.
+ */
+export function shouldHoldCmdChannel(event: CmdJoinEvent, role: ControlRole): boolean {
+  if (event === 'control_lost') return false;
+  if (role !== 'controller') return false;
+  return event === 'join_bot' || event === 'control_gained' || event === 'accept' || event === 'resubscribe' || event === 'heartbeat';
+}
+
+/** Topics the shared subscribe/resubscribe path may open. `:cmd` is not included. */
+export function privateListenTopics(botId: BotId, userId: string) {
+  const topics = privateTopics(botId, userId);
+  return { status: topics.status, ctl: topics.ctl, notify: topics.notify } as const;
+}
