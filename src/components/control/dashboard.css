@@ -75,6 +75,7 @@
   font-family: ui-monospace, Consolas, monospace;
 }
 .op .mapname { flex: 1; min-width: 0; padding: 6px 8px; }
+.op .mapname.bad { border-color: var(--err); }
 .op .pad { display: grid; grid-template-columns: repeat(3, 46px); gap: 6px; justify-content: center; margin-top: 10px; }
 .op .pad button { height: 40px; background: var(--inset); border: 1px solid var(--edge); color: var(--tx); border-radius: 8px; font-size: 16px; cursor: pointer; }
 .op .pad button:active { background: var(--acc); color: #000; }

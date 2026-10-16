@@ -4,9 +4,15 @@ import {
   alignedNow,
   clampLinAng,
   clampToolParams,
+  cmdChannelConfig,
+  commandDelivery,
   commandRejectText,
   createSeqCounter,
+  estopLatchAllowed,
+  estopRpcFallback,
   estopUsesRpc,
+  mapNameError,
+  parseCmdAck,
   isContinuous,
   privateCommandRoute,
   payloadHasToken,
@@ -128,6 +134,44 @@ describe('command wire format', () => {
     clock += 1;
     expect(tool).toMatchObject({ type: 'run_tool', tool: 'imu_test', token: 'lease-token', seq: clock });
     expect(tool.seq).toBe(nav.seq as number + 1);
+  });
+
+  it('does not latch an RPC-only E-STOP and requires a matching cmd_ack', () => {
+    expect(cmdChannelConfig()).toEqual({ private: true, broadcast: { ack: true } });
+    const rpc = estopRpcFallback();
+    expect(rpc).toEqual({ ok: false, via: 'rpc', error: 'E-STOP not confirmed, use the physical stop' });
+    expect(estopLatchAllowed(rpc)).toBe(false);
+    expect(estopLatchAllowed({ ok: true, via: 'rpc' })).toBe(false);
+    expect(estopLatchAllowed({ ok: true })).toBe(false);
+    expect(estopLatchAllowed(commandDelivery(null, 'estop'))).toBe(false);
+    expect(commandDelivery(null, 'estop').error).toBe('E-STOP not confirmed, use the physical stop');
+    expect(commandDelivery(null, 'other')).toEqual({ ok: false, via: 'timeout', error: 'not confirmed' });
+
+    expect(parseCmdAck({ seq: 10, ok: true })).toEqual({ seq: 10, ok: true });
+    expect(parseCmdAck({ seq: 10, ok: false, reason: 'bad token' })).toEqual({ seq: 10, ok: false, reason: 'bad token' });
+    expect(parseCmdAck({ seq: 11, ok: false, reason: 'stale epoch' })?.reason).toBe('stale epoch');
+    expect(parseCmdAck({ seq: 12, ok: false, reason: 'lower seq' })?.reason).toBe('lower seq');
+    expect(parseCmdAck({ seq: 13, ok: false, reason: 'sanitize' })?.reason).toBe('sanitize');
+    expect(parseCmdAck({ seq: '10', ok: true })).toBeNull();
+    expect(parseCmdAck(null)).toBeNull();
+
+    const accepted = commandDelivery({ seq: 10, ok: true }, 'estop');
+    expect(accepted).toEqual({ ok: true, via: 'ack' });
+    expect(estopLatchAllowed(accepted)).toBe(true);
+    const rejected = commandDelivery({ seq: 10, ok: false, reason: 'bad token' }, 'estop');
+    expect(rejected).toEqual({ ok: false, via: 'ack', error: 'bad token' });
+    expect(estopLatchAllowed(rejected)).toBe(false);
+    expect(estopLatchAllowed({ ok: true, via: 'broadcast' })).toBe(true);
+    expect(estopLatchAllowed({ ok: false, via: 'broadcast' })).toBe(false);
+  });
+
+  it('rejects map names outside letters, numbers, underscore, and hyphen', () => {
+    expect(mapNameError('')).toBeNull();
+    expect(mapNameError('lab_1-map')).toBeNull();
+    expect(mapNameError('A'.repeat(64))).toBeNull();
+    expect(mapNameError('has space')).toMatch(/letters, numbers/);
+    expect(mapNameError('room.pgm')).toMatch(/letters, numbers/);
+    expect(mapNameError('A'.repeat(65))).toMatch(/letters, numbers/);
   });
 
   it('shows the send_command limit phrases and aligns time from the lease', () => {

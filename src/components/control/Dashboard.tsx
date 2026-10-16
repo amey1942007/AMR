@@ -8,7 +8,7 @@ import { asset } from '@/lib/asset';
 import { getAuthClient } from '@/services/supabase-client';
 import { BOTS, HEARTBEAT_OFFLINE_MS, type BotId, type ControlCommand } from '@/lib/telemetry/protocol';
 import { useControlSession } from '@/lib/telemetry/useControlSession';
-import { clampLinAng, clampToolParams, commandRejectText, JOY_HZ, NUDGE_REPEAT_MS, ESTOP_RETRY_MS } from '@/lib/telemetry/commands';
+import { clampLinAng, clampToolParams, commandRejectText, estopLatchAllowed, mapNameError, JOY_HZ, NUDGE_REPEAT_MS, ESTOP_RETRY_MS } from '@/lib/telemetry/commands';
 import { COPY, countdownFraction, formatCountdown, initialOf, secondsRemaining } from '@/lib/control/access';
 import type { NormState } from '@/lib/telemetry/normalize';
 import { LiveCanvas } from './LiveCanvas';
@@ -108,40 +108,35 @@ export function Dashboard() {
   const canEdit = controller && estop === 'ready' && !offline && !tel.heartbeatStale && !tel.realtimeDown;
   const bot = BOTS.find((b) => b.id === botId)!;
 
-  const noteReject = useCallback((error: string | undefined) => {
-    const text = commandRejectText(error);
-    if (!text) return;
-    toast(text, 4000);
-    tel.pushLog('error', text);
-  }, [tel, toast]);
-
   const send = useCallback(async (cmd: ControlCommand) => {
     const res = await tel.sendCommand(cmd);
-    noteReject(res.error);
-    if (!res.ok && cmd.type !== 'estop' && !commandRejectText(res.error)) tel.pushLog('error', res.error || 'Command failed');
+    if (!res.ok && cmd.type !== 'estop') {
+      const text = commandRejectText(res.error) || res.error || 'Command failed';
+      toast(text, 4000);
+      tel.pushLog('error', text);
+    }
     return res.ok;
-  }, [tel, noteReject]);
+  }, [tel, toast]);
 
   const fireEstop = useCallback(() => {
     if (!controller) return;
     window.clearTimeout(estopTimer.current);
     setEstop('retrying');
-    let told = false;
+    let told = '';
     const attempt = async () => {
       if (!controllerRef.current) return;
-      const ok = await tel.sendCommand({ type: 'estop' });
-      if (ok.ok) {
+      const res = await tel.sendCommand({ type: 'estop' });
+      if (estopLatchAllowed(res)) {
         setEstop('latched');
         tel.pushLog('error', COPY.estopLog);
         return;
       }
-      const rejected = commandRejectText(ok.error);
-      if (rejected) {
-        toast(rejected, 4000);
-        tel.pushLog('error', rejected);
-        return;
+      const text = res.error || COPY.estopFail;
+      if (text !== told) {
+        told = text;
+        toast(text, 4000);
+        tel.pushLog('error', text);
       }
-      if (!told) { told = true; toast(COPY.estopFail, 4000); }
       estopTimer.current = window.setTimeout(() => { void attempt(); }, ESTOP_RETRY_MS);
     };
     void attempt();
@@ -464,7 +459,7 @@ export function Dashboard() {
               onRetry={() => { if (tel.requestError) void tel.requestControl(); }}
             />
           )}
-          <SystemCard frame={tel.frame} canEdit={canEdit} mapName={mapName} setMapName={setMapName} onSave={() => void send({ type: 'save_map', name: mapName || undefined })} />
+          <SystemCard frame={tel.frame} canEdit={canEdit} mapName={mapName} setMapName={setMapName} onSave={() => { if (mapNameError(mapName)) return; void send({ type: 'save_map', name: mapName || undefined }); }} />
           <StatusCard frame={tel.frame} />
           <ToolsCard
             frame={tel.frame}
@@ -608,9 +603,12 @@ function SystemCard({ frame, canEdit, mapName, setMapName, onSave }: { frame: No
           {s?.throttled ? <div className="sys" style={{ borderColor: 'var(--err)' }}><b>⚠ PI THROTTLED</b><span style={{ color: 'var(--err)' }}>0x{s.throttled.toString(16)}</span></div> : null}
         </div>
       )}
-      <div className={`row ${canEdit ? '' : 'locked'}`} style={{ marginTop: 10 }} aria-disabled={!canEdit}>
-        <input className="mapname" aria-label="map name (blank = timestamp)" placeholder="map name (blank = timestamp)" value={mapName} onChange={(e) => setMapName(e.target.value)} />
-        <button type="button" className="btn" onClick={onSave}>💾 Save map</button>
+      <div style={{ marginTop: 10 }}>
+        <div className={`row ${canEdit ? '' : 'locked'}`} aria-disabled={!canEdit}>
+          <input className={`mapname${mapNameError(mapName) ? ' bad' : ''}`} aria-label="map name (blank = timestamp)" aria-invalid={mapNameError(mapName) ? true : undefined} aria-describedby={mapNameError(mapName) ? 'map-name-err' : undefined} placeholder="map name (blank = timestamp)" value={mapName} onChange={(e) => setMapName(e.target.value)} />
+          <button type="button" className="btn" disabled={!!mapNameError(mapName)} onClick={onSave}>💾 Save map</button>
+        </div>
+        {mapNameError(mapName) && <p id="map-name-err" className="err" role="alert">{mapNameError(mapName)}</p>}
       </div>
     </section>
   );

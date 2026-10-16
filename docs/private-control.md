@@ -13,13 +13,13 @@ Operator sign-in is email and password. Driving rights come from the control lea
 
 Do not set the flag in the production Pages build until Review & Debugger OKs the cut-over and the bridge is subscribed to the private topics. The lease RPCs run in both modes. The control token is sent only on the private `:cmd` topic. The public `command` broadcast never includes it.
 
-The project Realtime setup has no message partitions, so a database push on `:ctl`, `:cmdq`, or `user:<uid>:notify` is dropped. The panel does not depend on those. Control state comes from `bot_heartbeat` (every 5 seconds, every 2 seconds while a request is pending). With the flag on, every command type — including discrete ones such as `nav_goal` and `run_tool` — is a client broadcast on `bot:<id>:cmd`, carrying the lease token and the shared time-based `seq`. The bridge already accepts every command type there. `send_command` is used only for E-STOP when `:cmd` is not `SUBSCRIBED`. A failed broadcast while the channel is still subscribed is not sent through the RPC. With the flag off, commands stay on the public channel (the current bridge does not read `send_command`).
+The project Realtime setup has no message partitions, so a database push on `:ctl`, `:cmdq`, or `user:<uid>:notify` is dropped. The panel does not depend on those. Control state comes from `bot_heartbeat` (every 5 seconds, every 2 seconds while a request is pending). With the flag on, every command type — including discrete ones such as `nav_goal` and `run_tool` — is a client broadcast on `bot:<id>:cmd`, carrying the lease token and the shared time-based `seq`. The `:cmd` channel is created with `broadcast.ack` so the server confirms it accepted the frame. That server ack is not delivery. The bridge replies with a `cmd_ack` broadcast on `bot:<id>:status`, payload `{seq, ok, reason?}`. The panel marks a command delivered only when that ack is `ok` for the same seq. A rejection shows `reason` (bad token, stale epoch, lower seq, sanitize, and the rest). If no ack arrives within about 1.5 seconds, the command is not confirmed. E-STOP keeps retrying both `:cmd` and `send_command` until an ok ack. `send_command` never counts as delivery, because the bridge cannot see that row, so an RPC-only E-STOP stays on "E-STOP not confirmed, use the physical stop" and does not latch. With the flag off, commands stay on the public channel and latch from the broadcast result, because that bridge does not send `cmd_ack`.
 
 Viewers do not subscribe to `bot:<id>:cmd`. The client joins `:cmd` only after a controller-shaped result: `join_bot` when the role is controller, `control_gained`, `control_result` with status `accepted`, or a heartbeat that still says controller. It leaves `:cmd` on `control_lost` and when Give sets the role to viewer. A listen-channel reconnect (`:status`, `:ctl`, `:notify`) does not open `:cmd`. It rejoins `:cmd` only if the role is still controller. A `:cmd` channel error retries that topic alone and does not resubscribe the listen channels.
 
 `seq` is a millisecond timestamp, then +1 for later commands in the same epoch, so a reloaded page does not go backwards against rows already stored. Command `ts` adds the offset learned from the controller's own heartbeat: `lease_expires_at` is server now plus 15 seconds. The offset is updated only while the role is controller. A viewer heartbeat's lease belongs to the current driver and can be a few seconds stale.
 
-`send_command`, used only for that E-STOP fallback, can reject with `rate limited` or `command too large`. The panel toasts that exact text and writes it to the console. A failed join or heartbeat shows the RPC message in the reconnect bar.
+A bridge `cmd_ack` rejection, an ack timeout, or an E-STOP that only reached `send_command` is toasted and written to the console. `rate limited` and `command too large` are shown when those phrases come back. A failed join or heartbeat shows the RPC message in the reconnect bar. Map names are blank (bridge timestamps the file) or `[A-Za-z0-9_-]{1,64}`. A space or other character shows an inline error and is not sent.
 
 ## Auth redirect allowlist
 
@@ -36,7 +36,7 @@ These exact URLs must be in the Supabase Auth redirect URL allowlist, or invite,
 - This bridge drops every command except `set_rate` when `from.rank` is missing or below 1. The website no longer sends `from.rank`. Public-path drive commands will be ignored until the bridge is updated or the private flag is turned on against a bridge that does not check rank. Telemetry on the public channel still displays.
 - `seq_*` waypoint commands are not in the `send_command` allowlist. The waypoint card is read-only. Those commands were not added.
 - `drive` has no defined dashboard payload, so there is no drive-distance teleop control beyond the Tools card (`run_tool`). `set_rate` is accepted by this bridge but has no header control.
-- Space is an E-STOP only when focus is not in an input, so a map name can contain spaces. Esc still stops, except while the keyboard-help dialog is open.
+- Space is an E-STOP only when focus is not in an input, so typing a map name does not stop the robot. The name itself cannot contain spaces: it must be blank or match `[A-Za-z0-9_-]{1,64}`. Esc still stops, except while the keyboard-help dialog is open.
 - While the heartbeat is stale the panel shows "Reconnecting…" and disables drive controls. E-STOP stays enabled for the controller, including when the bot looks offline.
 
 ## Manual test checklist
@@ -70,7 +70,9 @@ E-STOP and teleop (controller only)
 
 - [ ] Header E-STOP and the pad centre send immediately. Space and Esc do the same outside text fields.
 - [ ] Latch copy is "STOPPED · Re-arm". Hold about 1 second to clear. Banner "EMERGENCY STOP ACTIVE". Drive, nav, and tools stay disabled while latched. E-STOP stays available.
-- [ ] If the send fails, the button shows retry and a toast "E-STOP not confirmed, retrying". Console line: "E-STOP — motion halted, tool stopped, nav goal cancelled".
+- [ ] E-STOP latches only after `cmd_ack` with `ok: true` for that seq. The button then shows "STOPPED · Re-arm" and the console line "E-STOP — motion halted, tool stopped, nav goal cancelled".
+- [ ] If `:cmd` is down, or no ack arrives, the toast is "E-STOP not confirmed, use the physical stop". The button stays on retry and does not latch. Both `:cmd` and `send_command` keep being tried.
+- [ ] A `cmd_ack` with `ok: false` shows `reason` (bad token, stale epoch, lower seq, sanitize) and E-STOP keeps retrying.
 - [ ] W/S and arrows nudge lin ±0.15, A/D ang ±0.6, repeat while held, zero on release. Hard limits lin ±0.30 and ang ±1.0.
 - [ ] Gamepad chip: "Gamepad connected", "No gamepad", or "Gamepad idle (view only)". Sticks go quiet on blur, disconnect, or losing control.
 
@@ -86,7 +88,7 @@ Flag off vs on
 
 - [ ] Flag unset: browser subscribes to `amr-bot-amr4` or `amr-bot-hardware-bot`. Command payloads have no `token` field.
 - [ ] Flag on, viewer: browser subscribes to `:status`, `:ctl`, and `user:<uid>:notify` only. It does not open `:cmd`.
-- [ ] Flag on, controller: `:cmd` is joined. Nav, tools, vision, save map, blacklist, nudge, and joy are broadcasts on `:cmd` with epoch, token, seq, and ts. Seq is one shared clock and increases inside one epoch. None of those call `send_command`.
-- [ ] Flag on, E-STOP while `:cmd` is `SUBSCRIBED`: the same `:cmd` broadcast. While it is not subscribed: `send_command` with `{type:'estop'}` only.
-- [ ] A `send_command` rejection of `rate limited` or `command too large` is shown in a toast and on the console.
+- [ ] Flag on, controller: `:cmd` is joined with `broadcast.ack`. Nav, tools, vision, save map, blacklist, nudge, and joy are broadcasts on `:cmd` with epoch, token, seq, and ts. Seq is one shared clock and increases inside one epoch. A command is delivered only after `cmd_ack`.
+- [ ] Flag on, E-STOP while `:cmd` is `SUBSCRIBED`: the same broadcast, plus `send_command`, and latch only on `cmd_ack` ok. While it is not subscribed: `send_command` is still called, the result stays unconfirmed, and the panel keeps retrying.
+- [ ] Save map rejects a name outside `[A-Za-z0-9_-]{1,64}` with the inline error. A blank name is allowed.
 - [ ] `https://amrslam.tech/set-password` and `https://amrslam.tech/sign-in` are on the Supabase Auth redirect allowlist.

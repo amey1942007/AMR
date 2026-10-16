@@ -5,13 +5,20 @@ import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import {
   HEARTBEAT_MS,
   PENDING_POLL_MS,
+  ACK_TIMEOUT_MS,
   alignedNow,
+  cmdChannelConfig,
+  commandDelivery,
   createSeqCounter,
+  estopRpcFallback,
+  parseCmdAck,
   privateCmdPayload,
   privateCommandRoute,
   publicCommandEnvelope,
   serverOffsetFromLease,
   shouldFastPoll,
+  type CmdAck,
+  type CommandResult,
 } from './commands';
 import { privateControlEnabled, privateListenTopics, publicChannel, shouldHoldCmdChannel, type CmdJoinEvent } from './channels';
 import type { BotId, ConsoleLogLine, ControlCommand, MapFrame } from './protocol';
@@ -47,7 +54,7 @@ export interface ControlSession {
   lastTelemetryAt: number | null;
   names: Record<string, string>;
   pushLog: (level: string, text: string) => void;
-  sendCommand: (cmd: ControlCommand) => Promise<{ ok: boolean; error?: string }>;
+  sendCommand: (cmd: ControlCommand) => Promise<CommandResult>;
   requestControl: () => Promise<void>;
   cancelRequest: (id: string) => Promise<void>;
   respond: (id: string, accept: boolean) => Promise<{ kind: 'ok' | 'ended' | 'left' | 'lost' | 'retry'; name?: string }>;
@@ -96,6 +103,7 @@ export function useControlSession(
   const leaveCmdRef = useRef<() => void>(() => {});
   const offsetRef = useRef<number | null>(null);
   const publicChRef = useRef<RealtimeChannel | null>(null);
+  const ackWaiters = useRef(new Map<number, (ack: CmdAck) => void>());
 
   const syncCmd = useCallback((event: CmdJoinEvent, role: 'controller' | 'viewer' | null) => {
     if (!privateControl) return;
@@ -252,7 +260,7 @@ export function useControlSession(
     const joinCmd = () => {
       if (cancelled || !privateControl || cmdChRef.current) return;
       const topic = `bot:${botId}:cmd`;
-      const cmd = client.channel(topic, { config: { private: true } });
+      const cmd = client.channel(topic, { config: cmdChannelConfig() });
       cmdChRef.current = cmd;
       cmdSubscribedRef.current = false;
       cmd.subscribe((status) => {
@@ -300,6 +308,14 @@ export function useControlSession(
         status.on('broadcast', { event: 'map' }, onMap);
         status.on('broadcast', { event: 'log' }, onLog);
         status.on('broadcast', { event: 'hb' }, onHb);
+        status.on('broadcast', { event: 'cmd_ack' }, ({ payload }) => {
+          const ack = parseCmdAck(payload);
+          if (!ack) return;
+          const wait = ackWaiters.current.get(ack.seq);
+          if (!wait) return;
+          ackWaiters.current.delete(ack.seq);
+          wait(ack);
+        });
         watch(status);
         const ctl = track(client.channel(topics.ctl, { config: { private: true } }));
         ctl.on('broadcast', { event: 'control' }, () => {
@@ -384,27 +400,55 @@ export function useControlSession(
     return { ok: true };
   }, [client, botId]);
 
-  const sendCommand = useCallback(async (cmd: ControlCommand) => {
+  const sendCommand = useCallback(async (cmd: ControlCommand): Promise<CommandResult> => {
     if (roleRef.current !== 'controller') return { ok: false, error: 'viewer' };
     const epochNow = epochRef.current;
     const token = tokenRef.current;
     let seq = 0;
     try { seq = seqRef.current.next(epochNow); } catch { return { ok: false, error: 'epoch' }; }
     const ts = alignedNow(Date.now(), offsetRef.current);
+    const armAck = () => {
+      let timer = 0;
+      let settled = false;
+      let resolveAck: (ack: CmdAck | null) => void = () => {};
+      const promise = new Promise<CmdAck | null>((resolve) => { resolveAck = resolve; });
+      const finish = (ack: CmdAck | null) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        ackWaiters.current.delete(seq);
+        resolveAck(ack);
+      };
+      timer = window.setTimeout(() => finish(null), ACK_TIMEOUT_MS);
+      ackWaiters.current.set(seq, (ack) => finish(ack));
+      return { promise, cancel: () => finish(null) };
+    };
     if (privateControl) {
       const ch = cmdChRef.current;
       const subscribed = Boolean(cmdSubscribedRef.current && ch && token);
       const route = privateCommandRoute(cmd.type, subscribed);
-      if (route === 'cmd') {
-        const res = await ch!.send({
-          type: 'broadcast',
-          event: 'command',
-          payload: privateCmdPayload(cmd, { epoch: epochNow, token: token!, seq, ts }),
-        });
-        return { ok: res === 'ok', error: res === 'ok' ? undefined : 'send' };
+      if (route === 'estop-rpc') {
+        await rpcCommand({ type: 'estop' }, epochNow, seq);
+        return estopRpcFallback();
       }
-      if (route === 'estop-rpc') return rpcCommand({ type: 'estop' }, epochNow, seq);
-      return { ok: false, error: token ? 'no-channel' : 'no-token' };
+      if (route === 'blocked') return { ok: false, error: token ? 'no-channel' : 'no-token' };
+      const armed = armAck();
+      const res = await ch!.send({
+        type: 'broadcast',
+        event: 'command',
+        payload: privateCmdPayload(cmd, { epoch: epochNow, token: token!, seq, ts }),
+      });
+      if (cmd.type === 'estop') void rpcCommand({ type: 'estop' }, epochNow, seq);
+      if (res !== 'ok') {
+        armed.cancel();
+        const failed = estopRpcFallback();
+        return cmd.type === 'estop' ? failed : { ok: false, error: 'send', via: 'timeout' };
+      }
+      const delivered = commandDelivery(await armed.promise, cmd.type === 'estop' ? 'estop' : 'other');
+      if (!delivered.ok && delivered.via === 'ack' && (cmd.type === 'joy' || cmd.type === 'nudge') && delivered.error) {
+        pushLog('error', delivered.error);
+      }
+      return delivered;
     }
     const ch = publicChRef.current;
     if (!ch) return { ok: false, error: 'no-channel' };
@@ -413,8 +457,8 @@ export function useControlSession(
       event: 'command',
       payload: publicCommandEnvelope(botId, cmd, { id: crypto.randomUUID(), epoch: epochNow, seq, ts }),
     });
-    return { ok: res === 'ok', error: res === 'ok' ? undefined : 'send' };
-  }, [privateControl, rpcCommand, botId]);
+    return { ok: res === 'ok', via: 'broadcast', error: res === 'ok' ? undefined : 'send' };
+  }, [privateControl, rpcCommand, botId, pushLog]);
 
   const requestControl = useCallback(async () => {
     if (!client) { setRequestError('network'); return; }

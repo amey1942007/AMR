@@ -7,6 +7,9 @@ export const PENDING_POLL_MS = 2_000;
 export const NUDGE_REPEAT_MS = 150;
 export const JOY_HZ = 15;
 export const ESTOP_RETRY_MS = 250;
+/** How long to wait for the bridge `cmd_ack` before the command is unconfirmed. */
+export const ACK_TIMEOUT_MS = 1_500;
+export const ESTOP_UNCONFIRMED = 'E-STOP not confirmed, use the physical stop';
 export const LIN_LIMIT = 0.3;
 export const ANG_LIMIT = 1;
 
@@ -117,9 +120,63 @@ export function privateCommandRoute(type: string, cmdSubscribed: boolean): Priva
   return 'blocked';
 }
 
-/** E-STOP uses `send_command` only while `bot:<id>:cmd` is not SUBSCRIBED. */
+/** E-STOP uses `send_command` only while `bot:<id>:cmd` is not SUBSCRIBED. The RPC still does not confirm delivery. */
 export function estopUsesRpc(input: { cmdSubscribed: boolean }): boolean {
   return privateCommandRoute('estop', input.cmdSubscribed) === 'estop-rpc';
+}
+
+/** `:cmd` asks the Realtime server to ack the broadcast. That ack is not bridge delivery. */
+export function cmdChannelConfig() {
+  return { private: true, broadcast: { ack: true } } as const;
+}
+
+export interface CmdAck {
+  seq: number;
+  ok: boolean;
+  reason?: string;
+}
+
+/** Bridge `cmd_ack` on `bot:<id>:status`. */
+export function parseCmdAck(payload: unknown): CmdAck | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const row = payload as { seq?: unknown; ok?: unknown; reason?: unknown };
+  if (typeof row.seq !== 'number' || !Number.isFinite(row.seq)) return null;
+  if (typeof row.ok !== 'boolean') return null;
+  const reason = typeof row.reason === 'string' && row.reason.trim() ? row.reason.trim() : undefined;
+  return { seq: row.seq, ok: row.ok, reason };
+}
+
+export interface CommandResult {
+  ok: boolean;
+  error?: string;
+  via?: 'ack' | 'rpc' | 'timeout' | 'broadcast';
+}
+
+/** RPC success is not delivery: Realtime has no partitions, so the bridge never sees the row. */
+export function estopRpcFallback(): CommandResult {
+  return { ok: false, via: 'rpc', error: ESTOP_UNCONFIRMED };
+}
+
+/** Latch only after the bridge acks. A missing ack stays unconfirmed instead of latched. */
+export function commandDelivery(ack: CmdAck | null, kind: 'estop' | 'other'): CommandResult {
+  if (ack?.ok) return { ok: true, via: 'ack' };
+  if (ack && !ack.ok) return { ok: false, via: 'ack', error: ack.reason || 'rejected' };
+  return { ok: false, via: 'timeout', error: kind === 'estop' ? ESTOP_UNCONFIRMED : 'not confirmed' };
+}
+
+/** An RPC-only or timed-out E-STOP must not show as latched. Public broadcasts have no ack. */
+export function estopLatchAllowed(result: { ok: boolean; via?: string }): boolean {
+  if (!result.ok) return false;
+  return result.via === 'ack' || result.via === 'broadcast';
+}
+
+const MAP_NAME = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** Blank means the bridge timestamps the file. Anything else must match the bridge rule. */
+export function mapNameError(name: string): string | null {
+  if (name === '') return null;
+  if (MAP_NAME.test(name)) return null;
+  return 'Use letters, numbers, _ or - (1–64 characters).';
 }
 
 /** Visible copy when `send_command` raises one of the limit errors. Other messages stay as returned. */
