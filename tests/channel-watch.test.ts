@@ -6,8 +6,11 @@ import {
   formatChannelDetail,
   interpretChannelStatus,
   linkRetryAction,
+  listenAccessToken,
   openChannel,
+  readyToJoin,
   retireChannels,
+  waitUntil,
 } from '@/lib/telemetry/channel-watch';
 import { BROADCAST_AUTH } from '@/services/supabase-client';
 import { controlListenPlan } from '@/lib/telemetry/channels';
@@ -169,6 +172,33 @@ describe('public join recovery', () => {
     expect(BROADCAST_AUTH.persistSession).toBe(false);
     expect(BROADCAST_AUTH.autoRefreshToken).toBe(false);
     expect(BROADCAST_AUTH.detectSessionInUrl).toBe(false);
+    expect(BROADCAST_AUTH.storageKey).toBe('amr-broadcast');
+  });
+
+  it('puts the publishable key on the public join and the operator token only on private', () => {
+    expect(listenAccessToken(false, 'publishable-key', 'operator-jwt')).toBe('publishable-key');
+    expect(listenAccessToken(false, 'publishable-key', null)).toBe('publishable-key');
+    expect(listenAccessToken(true, 'publishable-key', 'operator-jwt')).toBe('operator-jwt');
+    expect(listenAccessToken(true, 'publishable-key', null)).toBeNull();
+  });
+
+  it('does not start a join until the previous channel is gone and the socket is open', async () => {
+    expect(readyToJoin(false, true)).toBe(false);
+    expect(readyToJoin(true, false)).toBe(false);
+    expect(readyToJoin(true, true)).toBe(true);
+
+    let open = false;
+    let t = 0;
+    const joined = await waitUntil(() => open, 100, () => t, async () => {
+      t += 30;
+      open = t >= 60;
+    });
+    expect(joined).toBe(true);
+    expect(t).toBeGreaterThanOrEqual(60);
+
+    t = 0;
+    const cold = await waitUntil(() => false, 50, () => t, async () => { t += 30; });
+    expect(cold).toBe(false);
   });
 
   it('puts the subscribe status and error on the debug line without a token', () => {

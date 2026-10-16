@@ -10,12 +10,23 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * No persisted session, so Realtime never receives the operator JWT.
  * A signed-in token on that public topic is rejected (`JwtSignatureError` /
  * authorization) and the page then tears the channel down.
+ *
+ * `storageKey` is not the default `sb-<project>-auth-token`. The contact client
+ * uses that default in the same page, and GoTrue treats two clients on one key
+ * as undefined. The operator session stays on `amr-auth`.
  */
 export const BROADCAST_AUTH = {
   persistSession: false,
   autoRefreshToken: false,
   detectSessionInUrl: false,
+  storageKey: 'amr-broadcast',
 } as const;
+
+/** Publishable key the broadcast client was constructed with. Empty if missing. */
+export function publishableKeyOf(client: { supabaseKey?: string } | null): string {
+  const key = client?.supabaseKey;
+  return typeof key === 'string' ? key : '';
+}
 
 let authClient: Promise<SupabaseClient> | null = null;
 let broadcastClient: Promise<SupabaseClient> | null = null;

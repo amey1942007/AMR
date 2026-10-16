@@ -174,3 +174,42 @@ export function interpretChannelStatus(
 export function authEventRefreshesRealtime(event: string): boolean {
   return event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN';
 }
+
+/**
+ * Token placed on the listen socket before `channel.subscribe`.
+ * Public `amr-bot-*` gets the publishable key. The operator access token is only
+ * for private topics. A cold join that snapshots `accessTokenValue` before this
+ * runs is sent with no token; the 10s phoenix timer then fires `TIMED_OUT`.
+ */
+export function listenAccessToken(
+  privateControl: boolean,
+  publishableKey: string,
+  operatorToken: string | null,
+): string | null {
+  if (!privateControl) return publishableKey || null;
+  return operatorToken;
+}
+
+/**
+ * `channel.subscribe` starts the 10s join timer even when the frame is only
+ * buffered. Wait until the previous topic is gone (so `channel()` cannot reuse
+ * a channel whose `subscribe` is a no-op) and the socket is already open.
+ */
+export function readyToJoin(previousRemovalSettled: boolean, socketOpen: boolean): boolean {
+  return previousRemovalSettled && socketOpen;
+}
+
+/** Poll `pred` until it is true or `timeoutMs` has elapsed. */
+export async function waitUntil(
+  pred: () => boolean,
+  timeoutMs: number,
+  now: () => number,
+  sleep: (ms: number) => Promise<void>,
+): Promise<boolean> {
+  const start = now();
+  while (!pred()) {
+    if (now() - start >= timeoutMs) return false;
+    await sleep(25);
+  }
+  return true;
+}
