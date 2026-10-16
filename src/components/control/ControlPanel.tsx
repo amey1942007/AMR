@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/useAuth';
 import { PillButton } from '@/components/nav/PillButton';
 import { readConfig } from '@/lib/config';
 import { getAuthClient } from '@/services/supabase-client';
+import { offlineMessage } from '@/lib/telemetry/link-status';
 import { canDrive, RANK_LABEL, type BotId } from '@/lib/telemetry/protocol';
 import { useBotTelemetry } from '@/lib/telemetry/useBotTelemetry';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -19,11 +20,26 @@ import { BackgroundFx } from './BackgroundFx';
 
 type WorldPt = [number, number];
 
-function statusTone(phase: string, highLag: boolean) {
-  if (phase === 'live') return highLag ? 'text-[#ffb74d]' : 'text-[var(--success)]';
-  if (phase === 'idle') return 'text-[var(--success)]';
-  if (phase === 'connecting') return 'text-muted';
-  return 'text-[var(--danger)]';
+function statusTone(phase: string) {
+  if (phase === 'live') return 'text-[#3ddc84]';
+  if (phase === 'idle') return 'text-[#ffb74d]';
+  if (phase === 'connecting') return 'text-[#7d8fa1]';
+  return 'text-[#ff5d5d]';
+}
+
+function StatusMark({ phase }: { phase: string }) {
+  if (phase === 'connecting') return <span className="control-status-ring" aria-hidden />;
+  if (phase === 'idle') {
+    return (
+      <span
+        className="inline-block size-2 shrink-0 rounded-full border border-[#ffb74d]"
+        style={{ background: 'linear-gradient(90deg, #ffb74d 50%, transparent 50%)' }}
+        aria-hidden
+      />
+    );
+  }
+  if (phase === 'live') return <span className="inline-block size-2 shrink-0 rounded-full bg-[#3ddc84]" aria-hidden />;
+  return <span className="inline-block size-2 shrink-0 rounded-full border border-[#ff5d5d]" aria-hidden />;
 }
 
 const NAV_MODES: { id: CanvasNavMode; label: string }[] = [
@@ -61,9 +77,12 @@ function Inner() {
 
   const tel = useBotTelemetry(client, user, 'amr4');
   const rank = tel.profile?.rank ?? 0;
-  const canDriveNow = tel.iAmController && canDrive(rank);
-  const canEstop = canDrive(rank);
+  const robotLive = tel.link.phase === 'live';
+  const canDriveNow = robotLive && tel.iAmController && canDrive(rank);
+  const canEstop = tel.iAmController;
   const showLive = tel.link.phase !== 'offline';
+  const highLag = robotLive && tel.viewMode === 'board';
+  const botLabel = tel.bots.find((b) => b.id === tel.botId)?.label ?? 'Robot';
 
   const sendCmd = tel.sendCommand;
   const send = useCallback((cmd: Parameters<typeof sendCmd>[0]) => {
@@ -193,12 +212,14 @@ function Inner() {
           role="status"
           aria-live="polite"
           aria-atomic="true"
-          className={`font-mono tracking-wider ${statusTone(tel.link.phase, tel.viewMode === 'board')}`}
+          className={`inline-flex items-center gap-2 font-mono tracking-wider ${statusTone(tel.link.phase)}`}
         >
+          <StatusMark phase={tel.link.phase} />
           {tel.link.label}
+          {highLag && <span className="sr-only"> Slow connection</span>}
         </span>
         {tel.link.showLag && (
-          <span className="font-mono text-muted" aria-hidden="true">
+          <span className="font-mono text-[#ffb74d]" aria-hidden="true">
             lag {Math.round(tel.lagMs)} ms · {tel.viewMode}
           </span>
         )}
@@ -220,7 +241,12 @@ function Inner() {
           <span className="text-muted">No active controller</span>
         )}
         {!tel.iAmController && canDrive(tel.profile?.rank ?? 0) && (
-          <PillButton kind="filled" onClick={() => void tel.requestControl()}>
+          <PillButton
+            kind="filled"
+            disabled={tel.link.phase === 'offline'}
+            title={tel.link.phase === 'offline' ? 'Robot is offline' : undefined}
+            onClick={() => void tel.requestControl()}
+          >
             Take control
           </PillButton>
         )}
@@ -233,11 +259,26 @@ function Inner() {
 
       {tel.link.phase === 'offline' ? (
         <div className="grid min-h-[50vh] place-items-center border border-white/10 bg-black/30 px-6 py-16 text-center">
-          <div>
-            <p className="font-display text-[length:var(--text-h3)] text-white">Bot offline</p>
-            <p className="mt-3 max-w-md text-[length:var(--text-small)] text-muted">
-              {tel.link.offlineDetail}
-            </p>
+          <div className="flex w-full max-w-md flex-col items-center gap-6">
+            <div>
+              <p className="font-display text-[length:var(--text-h3)] text-white">
+                {tel.link.unreadable ? tel.link.label : `${botLabel} is offline`}
+              </p>
+              <p className="mt-3 text-[length:var(--text-small)] text-muted">
+                {tel.link.unreadable
+                  ? tel.link.offlineDetail
+                  : offlineMessage(tel.link.offlineDetail ?? '', tel.link.lastSeenAtMs, tel.now)}
+              </p>
+            </div>
+            {canEstop && (
+              <button
+                type="button"
+                className="h-12 w-full rounded-[var(--radius-chip)] bg-[var(--danger)] font-display text-[length:var(--text-button)] font-semibold tracking-wide text-white transition enabled:active:scale-[0.98]"
+                onClick={() => send({ type: 'estop' })}
+              >
+                E-STOP
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -261,7 +302,7 @@ function Inner() {
                     canInteract={canDriveNow}
                     onNavGoal={onNavGoal}
                     onBlacklist={onBlacklist}
-                    placeholder={tel.link.mapPlaceholder ?? 'waiting for telemetry…'}
+                    placeholder={tel.link.mapPlaceholder ?? 'Waiting for robot…'}
                     className="h-full"
                   />
                 )}
@@ -290,24 +331,30 @@ function Inner() {
             {/* Nav modes */}
             <div className="flex flex-wrap items-center gap-2 border border-white/10 bg-black/25 p-3">
               <span className="eyebrow text-muted mr-1">Nav mode</span>
-              {NAV_MODES.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  className={`rounded-[var(--radius-chip)] border px-3 py-1.5 text-[length:var(--text-small)] transition ${
-                    navMode === m.id
-                      ? 'border-white/30 bg-white/15 text-white'
-                      : 'border-white/10 text-muted hover:bg-white/5'
-                  }`}
-                  onClick={() => setNavModeSafe(m.id)}
-                >
-                  {m.label}
-                </button>
-              ))}
+              {NAV_MODES.map((m) => {
+                const navLocked = m.id !== 'off' && !canDriveNow;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={`rounded-[var(--radius-chip)] border px-3 py-1.5 text-[length:var(--text-small)] transition disabled:opacity-40 ${
+                      navMode === m.id
+                        ? 'border-white/30 bg-white/15 text-white'
+                        : 'border-white/10 text-muted hover:bg-white/5'
+                    }`}
+                    disabled={navLocked}
+                    title={navLocked && !robotLive ? 'Waiting for robot…' : undefined}
+                    onClick={() => setNavModeSafe(m.id)}
+                  >
+                    {m.label}
+                  </button>
+                );
+              })}
               <button
                 type="button"
                 className="rounded-[var(--radius-chip)] border border-white/15 px-3 py-1.5 text-[length:var(--text-small)] text-white/80 disabled:opacity-40"
                 disabled={!canDriveNow}
+                title={!robotLive ? 'Waiting for robot…' : undefined}
                 onClick={cancelNav}
               >
                 Cancel goal
@@ -328,6 +375,7 @@ function Inner() {
                     type="button"
                     className="rounded-[var(--radius-chip)] border border-white/15 px-3 py-1.5 text-[length:var(--text-small)] text-white/80 disabled:opacity-40"
                     disabled={!canDriveNow}
+                    title={!robotLive ? 'Waiting for robot…' : undefined}
                     onClick={() => send({ type: 'blacklist', action: 'clear' })}
                   >
                     Clear zones
@@ -366,9 +414,11 @@ function Inner() {
               />
               {!canDriveNow && (
                 <p className="mt-3 text-[length:var(--text-small)] text-muted">
-                  {canDrive(rank)
-                    ? 'Take control to drive. Higher authority preempts lower; others stay in view-only.'
-                    : 'Viewer rank — observation only. Ask an admin to raise your authority.'}
+                  {!robotLive
+                    ? 'Waiting for robot…'
+                    : canDrive(rank)
+                      ? 'Take control to drive. Higher authority preempts lower; others stay in view-only.'
+                      : 'Viewer rank — observation only. Ask an admin to raise your authority.'}
                 </p>
               )}
             </div>
@@ -377,14 +427,8 @@ function Inner() {
               <div className="border-b border-white/10 px-3 py-2">
                 <p className="eyebrow text-muted">Camera</p>
               </div>
-              <CameraFeed
-                frame={tel.frame}
-                enabled={
-                  tel.viewMode === 'full'
-                  && !!(tel.frame?.vision || tel.frame?.cameraJpegB64 || tel.frame?.cameraUrl)
-                }
-              />
-              {!tel.frame?.vision && !tel.frame?.cameraJpegB64 && !tel.frame?.cameraUrl && (
+              <CameraFeed frame={tel.frame} phase={tel.link.phase} boardMode={tel.viewMode === 'board'} />
+              {robotLive && tel.viewMode !== 'board' && !tel.frame?.vision && !tel.frame?.cameraJpegB64 && !tel.frame?.cameraUrl && (
                 <p className="px-3 py-2 text-[length:var(--text-small)] text-muted">
                   Vision off — start vision in Tools to see camera feed
                 </p>
@@ -411,6 +455,23 @@ function Inner() {
         </div>
       )}
 
+      <style>{`
+        .control-status-ring {
+          width: 8px;
+          height: 8px;
+          flex: none;
+          border-radius: 9999px;
+          border: 1.5px solid #7d8fa1;
+          animation: control-status-pulse 1.6s ease-out infinite;
+        }
+        @keyframes control-status-pulse {
+          0% { box-shadow: 0 0 0 0 rgba(125, 143, 161, 0.65); }
+          100% { box-shadow: 0 0 0 6px rgba(125, 143, 161, 0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .control-status-ring { animation: none; }
+        }
+      `}</style>
       <XboxGamepad
         open={xboxOpen}
         canDrive={canDriveNow}

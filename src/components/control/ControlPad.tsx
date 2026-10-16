@@ -15,7 +15,7 @@ export function ControlPad({
 }: {
   /** Nudge / nav / vision — requires control lock. */
   canDrive: boolean;
-  /** E-STOP for any operator+ even without lock. */
+  /** E-STOP only while this client holds the control lock. */
   canEstop: boolean;
   onCommand: (cmd: ControlCommand) => void;
 }) {

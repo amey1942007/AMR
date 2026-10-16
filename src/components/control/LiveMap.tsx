@@ -24,7 +24,7 @@ export function LiveMap({
   canInteract,
   onNavGoal,
   onBlacklist,
-  placeholder = 'waiting for telemetry…',
+  placeholder = 'Waiting for robot…',
   className = '',
 }: {
   frame: BotTelemetry | null;
@@ -100,12 +100,15 @@ export function LiveMap({
       ctx.fillStyle = '#070a10';
       ctx.fillRect(0, 0, W, H);
       if (!S?.pose) {
-        ctx.fillStyle = 'rgba(138,135,148,0.7)';
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#7d8fa1';
         ctx.font = '14px ui-monospace, monospace';
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         ctx.fillText(placeholderRef.current, W / 2, H / 2);
         return;
       }
+      ctx.textBaseline = 'alphabetic';
 
       const [rx, ry, yaw] = S.pose;
       const cx = W / 2;

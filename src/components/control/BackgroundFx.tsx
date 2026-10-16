@@ -55,17 +55,15 @@ export function BackgroundFx() {
           }}
         />
         <div
-          className="absolute left-[20%] top-[8%] size-40 rounded-full opacity-40 blur-3xl"
+          className="control-fx-drift absolute left-[20%] top-[8%] size-40 rounded-full opacity-40 blur-3xl"
           style={{
             background: 'radial-gradient(circle, rgba(123,47,247,0.35), transparent 70%)',
-            animation: 'control-fx-drift 14s ease-in-out infinite alternate',
           }}
         />
         <div
-          className="absolute right-[12%] top-[22%] size-52 rounded-full opacity-30 blur-3xl"
+          className="control-fx-drift control-fx-drift-rev absolute right-[12%] top-[22%] size-52 rounded-full opacity-30 blur-3xl"
           style={{
             background: 'radial-gradient(circle, rgba(232,28,176,0.28), transparent 70%)',
-            animation: 'control-fx-drift 18s ease-in-out infinite alternate-reverse',
           }}
         />
       </div>
@@ -73,6 +71,12 @@ export function BackgroundFx() {
         @keyframes control-fx-drift {
           from { transform: translate3d(0, 0, 0) scale(1); }
           to { transform: translate3d(24px, -18px, 40px) scale(1.12); }
+        }
+        .control-fx-drift { animation: control-fx-drift 14s ease-in-out infinite alternate; }
+        .control-fx-drift-rev { animation: control-fx-drift 18s ease-in-out infinite alternate-reverse; }
+        @media (prefers-reduced-motion: reduce) {
+          .control-fx-drift,
+          .control-fx-drift-rev { animation: none; }
         }
       `}</style>
     </div>

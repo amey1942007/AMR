@@ -17,11 +17,16 @@ import {
 } from './protocol';
 import { attachControlLock, fetchOperatorProfile, type ControlLockApi, type OperatorProfile } from './authority';
 import {
+  LAST_SEEN_SAMPLE,
   connectingLink,
   deriveLinkStatus,
   isPrivateControlEnabled,
+  nextPollDelay,
+  noteLastSeenFailure,
+  noteLastSeenRead,
   offlineLink,
-  parseLastSeenAt,
+  reduceChannelStatus,
+  type LastSeenSample,
   type LinkPhase,
   type LinkStatusView,
 } from './link-status';
@@ -36,6 +41,8 @@ export interface TelemetryView {
   /** Effective UI mode after lag fallback. */
   viewMode: 'full' | 'board';
   lagMs: number;
+  /** Local clock used for link copy. Ticks with the freshness check, not every second in the live region. */
+  now: number;
   lastTs: number | null;
   /** Phase, stable label, and whether the lag readout should show. */
   link: LinkStatusView;
@@ -52,14 +59,6 @@ export interface TelemetryView {
   bots: typeof BOTS;
 }
 
-interface LastSeenState {
-  settled: boolean;
-  readable: boolean;
-  at: number | null;
-}
-
-const LAST_SEEN_EMPTY: LastSeenState = { settled: false, readable: false, at: null };
-
 export function useBotTelemetry(
   client: SupabaseClient | null,
   user: { id: string; email?: string } | null,
@@ -69,9 +68,9 @@ export function useBotTelemetry(
   const [frame, setFrame] = useState<BotTelemetry | null>(null);
   const [map, setMap] = useState<MapFrame | null>(null);
   const [logs, setLogs] = useState<ConsoleLogLine[]>([]);
-  const [heartbeatTs, setHeartbeatTs] = useState<number | null>(null);
-  const [telemetryTs, setTelemetryTs] = useState<number | null>(null);
-  const [lastSeen, setLastSeen] = useState<LastSeenState>(LAST_SEEN_EMPTY);
+  const [heartbeatReceivedAt, setHeartbeatReceivedAt] = useState<number | null>(null);
+  const [telemetryReceivedAt, setTelemetryReceivedAt] = useState<number | null>(null);
+  const [lastSeen, setLastSeen] = useState<LastSeenSample>(LAST_SEEN_SAMPLE);
   const [subscribedAt, setSubscribedAt] = useState<number | null>(null);
   const [channelFailed, setChannelFailed] = useState(false);
   const [startedAt, setStartedAt] = useState(() => Date.now());
@@ -97,35 +96,55 @@ export function useBotTelemetry(
     return () => window.clearInterval(id);
   }, []);
 
-  // Signed-in read of amr_bots.last_seen_at. Anon is filtered by RLS and must
-  // not be treated as a fresh heartbeat (readable stays false on error).
+  // Signed-in read of amr_bots.last_seen_at. One request at a time. A single
+  // error keeps the last good row; the second consecutive failure is unreadable
+  // and the next try waits 12s. Anon is filtered by RLS (no error, empty row).
   useEffect(() => {
     if (!client || !user) return;
     let cancelled = false;
+    let timer = 0;
+    let inFlight = false;
+    let sample = LAST_SEEN_SAMPLE;
     const requested = botId;
-    const read = async () => {
-      const { data, error } = await client
-        .from('amr_bots')
-        .select('last_seen_at')
-        .eq('id', requested)
-        .maybeSingle();
-      if (cancelled) return;
-      if (error) {
-        setLastSeen({ settled: true, readable: false, at: null });
-        return;
-      }
-      const row = data as { last_seen_at?: string | null } | null;
-      setLastSeen({
-        settled: true,
-        readable: true,
-        at: parseLastSeenAt(row?.last_seen_at ?? null),
-      });
+
+    const schedule = (delay: number) => {
+      timer = window.setTimeout(() => { void read(); }, delay);
     };
+
+    const read = async () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      try {
+        const { data, error } = await client
+          .from('amr_bots')
+          .select('last_seen_at')
+          .eq('id', requested)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error) {
+          sample = noteLastSeenFailure(sample);
+          setLastSeen(sample);
+          schedule(nextPollDelay(sample.failures));
+          return;
+        }
+        const row = data as { last_seen_at?: string | null } | null;
+        sample = noteLastSeenRead(sample, row?.last_seen_at ?? null, Date.now());
+        setLastSeen(sample);
+        schedule(nextPollDelay(0));
+      } catch {
+        if (cancelled) return;
+        sample = noteLastSeenFailure(sample);
+        setLastSeen(sample);
+        schedule(nextPollDelay(sample.failures));
+      } finally {
+        inFlight = false;
+      }
+    };
+
     void read();
-    const id = window.setInterval(() => { void read(); }, 3_000);
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      window.clearTimeout(timer);
     };
   }, [client, user, botId]);
 
@@ -169,7 +188,7 @@ export function useBotTelemetry(
         setLagMs(lagRef.current);
         setViewMode(nextMode);
       }
-      setTelemetryTs(Number.isFinite(tel.ts) ? tel.ts : Date.now());
+      setTelemetryReceivedAt(Date.now());
       setFrame(tel);
     });
 
@@ -195,14 +214,15 @@ export function useBotTelemetry(
     ch.on('broadcast', { event: 'hb' }, ({ payload }) => {
       const hb = payload as HeartbeatMsg;
       if (!hb || (hb.botId != null && hb.botId !== botId)) return;
-      if (Number.isFinite(hb.ts)) setHeartbeatTs(hb.ts);
+      setHeartbeatReceivedAt(Date.now());
     });
 
     ch.subscribe(async (status) => {
       if (cancelled) return;
+      const next = reduceChannelStatus({ subscribedAt: null, channelFailed: false }, status, Date.now());
       if (status === 'SUBSCRIBED') {
-        setChannelFailed(false);
-        setSubscribedAt((prev) => prev ?? Date.now());
+        setChannelFailed(next.channelFailed);
+        setSubscribedAt(next.subscribedAt);
         await ch.send({
           type: 'broadcast',
           event: 'command',
@@ -217,7 +237,8 @@ export function useBotTelemetry(
         return;
       }
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-        setChannelFailed(true);
+        setChannelFailed(next.channelFailed);
+        setSubscribedAt(next.subscribedAt);
       }
     });
 
@@ -255,12 +276,8 @@ export function useBotTelemetry(
     const p = profileRef.current;
     const lock = lockRef.current;
     if (!ch || !p) return false;
-    if (cmd.type !== 'estop') {
-      const c = lock?.getController();
-      if (!c || c.userId !== p.userId) return false;
-    } else if (p.rank < 1) {
-      return false;
-    }
+    const holder = lock?.getController();
+    if (!holder || holder.userId !== p.userId) return false;
     const env: CommandEnvelope = {
       id: crypto.randomUUID(),
       botId,
@@ -288,9 +305,9 @@ export function useBotTelemetry(
     setFrame(null);
     setMap(null);
     setLogs([]);
-    setHeartbeatTs(null);
-    setTelemetryTs(null);
-    setLastSeen(LAST_SEEN_EMPTY);
+    setHeartbeatReceivedAt(null);
+    setTelemetryReceivedAt(null);
+    setLastSeen(LAST_SEEN_SAMPLE);
     setSubscribedAt(null);
     setChannelFailed(false);
     setStartedAt(Date.now());
@@ -300,7 +317,7 @@ export function useBotTelemetry(
     setBotIdState(id);
   }, []);
 
-  const lastTs = [heartbeatTs, telemetryTs].reduce<number | null>((latest, ts) => {
+  const lastTs = [heartbeatReceivedAt, telemetryReceivedAt].reduce<number | null>((latest, ts) => {
     if (ts == null || !Number.isFinite(ts)) return latest;
     return latest == null || ts > latest ? ts : latest;
   }, null);
@@ -316,8 +333,9 @@ export function useBotTelemetry(
         lastSeenSettled: lastSeen.settled,
         lastSeenReadable: lastSeen.readable,
         lastSeenAtMs: lastSeen.at,
-        heartbeatTs,
-        telemetryTs,
+        lastSeenChangedAt: lastSeen.changedAt,
+        heartbeatReceivedAt,
+        telemetryReceivedAt,
       });
 
   return {
@@ -325,6 +343,7 @@ export function useBotTelemetry(
     status: link.phase,
     viewMode,
     lagMs,
+    now,
     lastTs,
     link,
     frame,
