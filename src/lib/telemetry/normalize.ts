@@ -4,7 +4,8 @@
  * The in-repo bridge (`amr-bridge/amr_telemetry_bridge/bridge.py`) broadcasts camelCase
  * (`mapPose`, `yoloDet`, `cameraJpegB64`). The dashboard spec assumed the Pi SSE dict
  * (`map_pose`, `yolo_det`, and an unnamed JPEG field). Both are accepted.
- * The Ros_lidar_bot `hardware` branch bridge.py was not readable from GitHub (404).
+ * Hardware bridge full-rate frames send `scan: null` except at 5 Hz (capped to
+ * 90 `[angle, range]` points). Null means "no cloud this frame".
  */
 
 import type { MapFrame } from './protocol';
@@ -144,6 +145,16 @@ function vec2orNull(v: unknown): [number, number] | null {
   const b = num(v[1]);
   if (a == null || b == null) return null;
   return [a, b];
+}
+
+/**
+ * `scan: null` (and a missing scan) keeps the previous cloud.
+ * An array, including `[]` in board mode, replaces it.
+ */
+export function holdScan(prev: NormState | null, next: NormState, raw: unknown): NormState {
+  if (!prev || !raw || typeof raw !== 'object') return next;
+  if ((raw as { scan?: unknown }).scan != null) return next;
+  return { ...next, scan: prev.scan };
 }
 
 function pairs(v: unknown): [number, number][] {

@@ -50,3 +50,27 @@ export function privateListenTopics(botId: BotId, userId: string) {
   const topics = privateTopics(botId, userId);
   return { status: topics.status, ctl: topics.ctl, notify: topics.notify } as const;
 }
+
+export interface ListenTopic {
+  topic: string;
+  /** realtime-js `config.private`. The public `amr-bot-*` topic stays false. */
+  private: boolean;
+  /** Failures here are the status link. `:ctl` and `:notify` are not. */
+  carriesLink: boolean;
+}
+
+/**
+ * Channels /control joins. Flag off (the default): one public topic.
+ * Flag on: private status (link), ctl, and notify. `:cmd` stays controller-only.
+ */
+export function controlListenPlan(botId: BotId, userId: string, flag?: string | null): ListenTopic[] {
+  if (!privateControlEnabled(flag)) {
+    return [{ topic: publicChannel(botId), private: false, carriesLink: true }];
+  }
+  const topics = privateListenTopics(botId, userId);
+  return [
+    { topic: topics.status, private: true, carriesLink: true },
+    { topic: topics.ctl, private: true, carriesLink: false },
+    { topic: topics.notify, private: true, carriesLink: false },
+  ];
+}

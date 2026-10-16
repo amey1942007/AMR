@@ -63,8 +63,11 @@ export interface BotTelemetry {
   vel: [number, number];
   cmd: [number, number];
   imu?: { gz: number; ax: number; ay: number };
-  /** Lidar points as [angle_rad, range_m] in laser frame — omitted in board mode. */
-  scan?: [number, number][];
+  /**
+   * Lidar points as [angle_rad, range_m] in the laser frame.
+   * `null` keeps the previous cloud. Board mode sends `[]`.
+   */
+  scan?: [number, number][] | null;
   rates?: Record<string, TopicRate | number>;
   nodes?: Record<string, boolean>;
   tf?: Record<string, { ok: boolean; age: number | null }>;

@@ -20,7 +20,14 @@ import {
   type CmdAck,
   type CommandResult,
 } from './commands';
-import { privateControlEnabled, privateListenTopics, publicChannel, shouldHoldCmdChannel, type CmdJoinEvent } from './channels';
+import {
+  authEventRefreshesRealtime,
+  emptyChannelMembership,
+  interpretChannelStatus,
+  openChannel,
+  retireChannels,
+} from './channel-watch';
+import { controlListenPlan, privateControlEnabled, privateListenTopics, shouldHoldCmdChannel, type CmdJoinEvent } from './channels';
 import {
   connectingLink,
   deriveLinkStatus,
@@ -28,12 +35,11 @@ import {
   nextPollDelay,
   noteLastSeenFailure,
   noteLastSeenRead,
-  reduceChannelStatus,
   type LastSeenSample,
   type LinkStatusView,
 } from './link-status';
 import { nextLagMs, preferBoardMode, type BotId, type ConsoleLogLine, type ControlCommand, type MapFrame } from './protocol';
-import { normalizeMap, normalizeTelemetry, type NormState } from './normalize';
+import { holdScan, normalizeMap, normalizeTelemetry, type NormState } from './normalize';
 import { deriveStatusSigns, shortCommandReason, type StatusSignView } from './status-signs';
 import {
   parseHeartbeat,
@@ -73,6 +79,8 @@ export interface ControlSession {
   slowLink: boolean;
   /** Connected / not connected / error. The error sign carries a short reason. */
   signs: StatusSignView;
+  /** Muted note when ctl/notify fails and the data channel is still up. Not an error. */
+  channelNote: string | null;
   names: Record<string, string>;
   pushLog: (level: string, text: string) => void;
   sendCommand: (cmd: ControlCommand) => Promise<CommandResult>;
@@ -117,6 +125,7 @@ export function useControlSession(
   const [slowLink, setSlowLink] = useState(false);
   const [commandError, setCommandError] = useState<string | null>(null);
   const [telemetryUnreadable, setTelemetryUnreadable] = useState(false);
+  const [channelNote, setChannelNote] = useState<string | null>(null);
   const [names, setNames] = useState<Record<string, string>>({});
 
   const tokenRef = useRef<string | null>(null);
@@ -152,6 +161,7 @@ export function useControlSession(
     setRealtimeDown(false);
     setCommandError(null);
     setTelemetryUnreadable(false);
+    setChannelNote(null);
   }
 
   const syncCmd = useCallback((event: CmdJoinEvent, role: 'controller' | 'viewer' | null) => {
@@ -325,8 +335,25 @@ export function useControlSession(
     let cancelled = false;
     let delay = 1000;
     let retryTimer = 0;
+    let membership = emptyChannelMembership();
+    let nextChannelId = 1;
     const channels: RealtimeChannel[] = [];
+    const channelIds = new Map<RealtimeChannel, number>();
+    const sideRetry = new Map<string, number>();
     const track = (ch: RealtimeChannel) => { channels.push(ch); return ch; };
+    const topics = privateListenTopics(botId, userId);
+
+    const { data: authWatch } = client.auth.onAuthStateChange((event, session) => {
+      if (cancelled || !authEventRefreshesRealtime(event)) return;
+      const access = session?.access_token;
+      if (!access) return;
+      void client.realtime.setAuth(access);
+    });
+
+    const clearSideRetries = () => {
+      for (const timer of sideRetry.values()) window.clearTimeout(timer);
+      sideRetry.clear();
+    };
 
     const onTelemetry = ({ payload }: { payload: unknown }) => {
       const n = normalizeTelemetry(payload);
@@ -338,6 +365,7 @@ export function useControlSession(
         return;
       }
       setTelemetryUnreadable(false);
+      setFrame((prev) => holdScan(prev, n, payload));
       const received = Date.now();
       const prev = lastArriveRef.current;
       lastArriveRef.current = received;
@@ -350,7 +378,6 @@ export function useControlSession(
           setSlowLink(slow);
         }
       }
-      setFrame(n);
       setTelemetryReceivedAt(received);
       setLastTelemetryAt(received);
     };
@@ -407,66 +434,70 @@ export function useControlSession(
     joinCmdRef.current = joinCmd;
     leaveCmdRef.current = leaveCmd;
 
-    const subscribe = async () => {
-      const { data } = await client.auth.getSession();
-      const access = data.session?.access_token;
-      if (access) await client.realtime.setAuth(access);
-      if (cancelled) return;
-
-      const noteLink = (status: string) => {
-        const next = reduceChannelStatus({ subscribedAt: null, channelFailed: false }, status, Date.now());
-        if (status === 'SUBSCRIBED') {
-          setSubscribedAt(next.subscribedAt);
+    const watch = (ch: RealtimeChannel, link: boolean, onSideDown?: () => void) => {
+      const id = nextChannelId++;
+      channelIds.set(ch, id);
+      const generation = membership.generation;
+      membership = openChannel(membership, id);
+      ch.subscribe((status) => {
+        if (cancelled) return;
+        const effect = interpretChannelStatus(membership, { id, generation, carriesLink: link, status });
+        if (effect.ignore) return;
+        if (link && status === 'SUBSCRIBED') {
+          delay = 1000;
+          setSubscribedAt(Date.now());
           setChannelFailed(false);
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          setRealtimeDown(false);
+        } else if (effect.channelFailed) {
           setSubscribedAt(null);
           setChannelFailed(true);
+          setRealtimeDown(true);
+        } else if (status === 'SUBSCRIBED') {
+          delay = 1000;
         }
-      };
+        if (effect.note !== undefined) setChannelNote(effect.note);
+        if (effect.resubscribe) {
+          window.clearTimeout(retryTimer);
+          retryTimer = window.setTimeout(() => { if (!cancelled) void resubscribe(); }, delay);
+          delay = Math.min(15_000, delay * 2);
+          return;
+        }
+        if (effect.note) onSideDown?.();
+      });
+    };
 
-      const watch = (ch: RealtimeChannel, link: boolean) => {
-        ch.subscribe((status) => {
-          if (cancelled) return;
-          if (link) noteLink(status);
-          if (status === 'SUBSCRIBED') { delay = 1000; setRealtimeDown(false); return; }
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-            setRealtimeDown(true);
-            window.clearTimeout(retryTimer);
-            retryTimer = window.setTimeout(() => { if (!cancelled) void resubscribe(); }, delay);
-            delay = Math.min(15_000, delay * 2);
-          }
-        });
-      };
-
-      if (privateControl) {
-        const topics = privateListenTopics(botId, userId);
-        const status = track(client.channel(topics.status, { config: { private: true } }));
-        status.on('broadcast', { event: 'telemetry' }, onTelemetry);
-        status.on('broadcast', { event: 'map' }, onMap);
-        status.on('broadcast', { event: 'log' }, onLog);
-        status.on('broadcast', { event: 'hb' }, onHb);
-        status.on('broadcast', { event: 'cmd_ack' }, ({ payload }) => {
-          const ack = parseCmdAck(payload);
-          if (!ack) return;
-          const wait = ackWaiters.current.get(ack.seq);
-          if (!wait) return;
-          ackWaiters.current.delete(ack.seq);
-          wait(ack);
-        });
-        watch(status, true);
-        const ctl = track(client.channel(topics.ctl, { config: { private: true } }));
-        ctl.on('broadcast', { event: 'control' }, () => {
+    const openListen = (item: { topic: string; private: boolean; carriesLink: boolean }) => {
+      const ch = item.private
+        ? track(client.channel(item.topic, { config: { private: true } }))
+        : track(client.channel(item.topic));
+      if (item.carriesLink) {
+        if (!item.private) publicChRef.current = ch;
+        ch.on('broadcast', { event: 'telemetry' }, onTelemetry);
+        ch.on('broadcast', { event: 'map' }, onMap);
+        ch.on('broadcast', { event: 'log' }, onLog);
+        ch.on('broadcast', { event: 'hb' }, onHb);
+        if (item.private) {
+          ch.on('broadcast', { event: 'cmd_ack' }, ({ payload }) => {
+            const ack = parseCmdAck(payload);
+            if (!ack) return;
+            const wait = ackWaiters.current.get(ack.seq);
+            if (!wait) return;
+            ackWaiters.current.delete(ack.seq);
+            wait(ack);
+          });
+        }
+      } else if (item.topic === topics.ctl) {
+        ch.on('broadcast', { event: 'control' }, () => {
           void client.rpc('bot_heartbeat', { p_bot: botId }).then(({ data: beat, error }) => noteBeat(error, beat, 'heartbeat'));
         });
-        watch(ctl, false);
-        const notify = track(client.channel(topics.notify, { config: { private: true } }));
-        notify.on('broadcast', { event: 'control_lost' }, () => {
+      } else if (item.topic === topics.notify) {
+        ch.on('broadcast', { event: 'control_lost' }, () => {
           const token = tokenRef.current;
           const epochNow = epochRef.current;
-          const ch = cmdChRef.current;
-          if (roleRef.current === 'controller' && token && ch && cmdSubscribedRef.current) {
+          const cmdCh = cmdChRef.current;
+          if (roleRef.current === 'controller' && token && cmdCh && cmdSubscribedRef.current) {
             const seq = seqRef.current.next(epochNow);
-            void ch.send({
+            void cmdCh.send({
               type: 'broadcast',
               event: 'command',
               payload: privateCmdPayload({ type: 'nudge', lin: 0, ang: 0 }, { epoch: epochNow, token, seq, ts: alignedNow(Date.now(), offsetRef.current) }),
@@ -478,31 +509,54 @@ export function useControlSession(
           leaveCmd();
           void client.rpc('bot_heartbeat', { p_bot: botId }).then(({ data: beat, error }) => noteBeat(error, beat, 'heartbeat'));
         });
-        notify.on('broadcast', { event: 'control_gained' }, () => {
+        ch.on('broadcast', { event: 'control_gained' }, () => {
           syncCmd('control_gained', 'controller');
           void client.rpc('bot_heartbeat', { p_bot: botId }).then(({ data: beat, error }) => noteBeat(error, beat, 'heartbeat'));
         });
-        notify.on('broadcast', { event: 'control_result' }, ({ payload }) => {
+        ch.on('broadcast', { event: 'control_result' }, ({ payload }) => {
           const status = payload && typeof payload === 'object' ? (payload as { status?: string }).status : undefined;
           if (status === 'accepted') syncCmd('accept', 'controller');
           void client.rpc('bot_heartbeat', { p_bot: botId }).then(({ data: beat, error }) => noteBeat(error, beat, 'heartbeat'));
         });
-        notify.on('broadcast', { event: 'control_request' }, () => {
+        ch.on('broadcast', { event: 'control_request' }, () => {
           void client.rpc('bot_heartbeat', { p_bot: botId }).then(({ data: beat, error }) => noteBeat(error, beat, 'heartbeat'));
         });
-        watch(notify, false);
-      } else {
-        const ch = track(client.channel(publicChannel(botId)));
-        publicChRef.current = ch;
-        ch.on('broadcast', { event: 'telemetry' }, onTelemetry);
-        ch.on('broadcast', { event: 'map' }, onMap);
-        ch.on('broadcast', { event: 'log' }, onLog);
-        ch.on('broadcast', { event: 'hb' }, onHb);
-        watch(ch, true);
       }
+      const generationAtOpen = membership.generation;
+      watch(ch, item.carriesLink, () => {
+        if (sideRetry.has(item.topic)) return;
+        const timer = window.setTimeout(() => {
+          sideRetry.delete(item.topic);
+          if (cancelled || membership.generation !== generationAtOpen) return;
+          const sideId = channelIds.get(ch);
+          if (sideId == null || !membership.live.has(sideId)) return;
+          membership = retireChannels(membership, [sideId], false);
+          const idx = channels.indexOf(ch);
+          if (idx >= 0) channels.splice(idx, 1);
+          void client.removeChannel(ch);
+          openListen(item);
+        }, 1000);
+        sideRetry.set(item.topic, timer);
+      });
+    };
+
+    const subscribe = async () => {
+      const { data } = await client.auth.getSession();
+      const access = data.session?.access_token;
+      if (access) await client.realtime.setAuth(access);
+      if (cancelled) return;
+      const plan = controlListenPlan(botId, userId, privateControl ? '1' : '');
+      for (const item of plan) openListen(item);
     };
 
     const resubscribe = async () => {
+      clearSideRetries();
+      const ids: number[] = [];
+      for (const ch of channels) {
+        const id = channelIds.get(ch);
+        if (id != null) ids.push(id);
+      }
+      membership = retireChannels(membership, ids);
       for (const ch of channels) void client.removeChannel(ch);
       channels.length = 0;
       publicChRef.current = null;
@@ -516,6 +570,14 @@ export function useControlSession(
       cancelled = true;
       window.clearTimeout(stamp);
       window.clearTimeout(retryTimer);
+      clearSideRetries();
+      authWatch.subscription.unsubscribe();
+      const ids: number[] = [];
+      for (const ch of channels) {
+        const id = channelIds.get(ch);
+        if (id != null) ids.push(id);
+      }
+      membership = retireChannels(membership, ids);
       leaveCmd();
       publicChRef.current = null;
       for (const ch of channels) void client.removeChannel(ch);
@@ -714,6 +776,7 @@ export function useControlSession(
     lagMs,
     slowLink,
     signs,
+    channelNote,
     names,
     pushLog,
     sendCommand,
