@@ -116,8 +116,8 @@ describe('deriveLinkStatus', () => {
     const within = deriveLinkStatus(input({
       lastSeenSettled: true,
       lastSeenReadable: true,
-      lastSeenChangedAt: NOW - 10_000,
-      heartbeatReceivedAt: NOW - 10_000,
+      lastSeenChangedAt: NOW - HEARTBEAT_OFFLINE_MS - 1,
+      heartbeatReceivedAt: NOW - HEARTBEAT_OFFLINE_MS - 1,
     }));
     expect(within.phase).toBe('idle');
 
@@ -175,7 +175,7 @@ describe('deriveLinkStatus', () => {
       lastSeenAtMs: NOW - 2 * 60_000,
       lastSeenChangedAt: NOW - 60_000,
       subscribedAt: NOW - HEARTBEAT_OFFLINE_MS,
-      heartbeatReceivedAt: NOW - 10_000,
+      heartbeatReceivedAt: NOW - HEARTBEAT_OFFLINE_MS - 1,
     }));
     expect(link.phase).toBe('offline');
     expect(link.label).toBe('Offline');

@@ -145,9 +145,6 @@ export function useControlSession(
     setLagMs(0);
     setSlowLink(false);
     setRealtimeDown(false);
-    lagRef.current = 0;
-    lastArriveRef.current = 0;
-    slowRef.current = false;
   }
 
   const syncCmd = useCallback((event: CmdJoinEvent, role: 'controller' | 'viewer' | null) => {
@@ -314,7 +311,10 @@ export function useControlSession(
 
   useEffect(() => {
     if (!client || !userId) return;
-    setStartedAt(Date.now());
+    lagRef.current = 0;
+    lastArriveRef.current = 0;
+    slowRef.current = false;
+    const stamp = window.setTimeout(() => setStartedAt(Date.now()), 0);
     let cancelled = false;
     let delay = 1000;
     let retryTimer = 0;
@@ -500,6 +500,7 @@ export function useControlSession(
     void subscribe();
     return () => {
       cancelled = true;
+      window.clearTimeout(stamp);
       window.clearTimeout(retryTimer);
       leaveCmd();
       publicChRef.current = null;
