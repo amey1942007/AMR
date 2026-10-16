@@ -1,0 +1,43 @@
+<!--
+  Paste into the Supabase Dashboard. Do not put a real token in this file.
+  Authentication → Emails:
+
+  Invite user  — subject: Set your AMR operator password
+                 body: the "invite" block below
+
+  Reset password — subject: Reset your AMR operator password
+                   body: the "recovery" block below
+
+  Confirm the redirect allow list includes https://amrslam.tech/**
+  The link must use {{ .TokenHash }}. The site verifies it only after Continue.
+-->
+
+<!-- invite -->
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Set your AMR operator password</title></head>
+<body style="margin:0;padding:24px;background:#0e141b;color:#d7e1ea;font-family:system-ui,sans-serif;">
+  <p style="font-size:18px;">🤖 AMR</p>
+  <h1 style="font-size:22px;font-weight:600;">Set your operator password</h1>
+  <p>You have been invited to the AMR control panel. The link expires and works once.</p>
+  <p>
+    <a href="https://amrslam.tech/set-password?token_hash={{ .TokenHash }}&amp;type=invite" style="display:inline-block;background:#4fc3f7;color:#00222f;font-weight:700;text-decoration:none;padding:10px 16px;border-radius:7px;">Set password</a>
+  </p>
+  <p style="color:#7d8fa1;font-size:13px;">If you were not expecting this, ignore this email. Access is by invitation: admin@amrslam.tech.</p>
+</body>
+</html>
+
+<!-- recovery -->
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Reset your AMR operator password</title></head>
+<body style="margin:0;padding:24px;background:#0e141b;color:#d7e1ea;font-family:system-ui,sans-serif;">
+  <p style="font-size:18px;">🤖 AMR</p>
+  <h1 style="font-size:22px;font-weight:600;">Reset your password</h1>
+  <p>A password reset was requested for your AMR operator account. The link expires and works once.</p>
+  <p>
+    <a href="https://amrslam.tech/set-password?token_hash={{ .TokenHash }}&amp;type=recovery" style="display:inline-block;background:#4fc3f7;color:#00222f;font-weight:700;text-decoration:none;padding:10px 16px;border-radius:7px;">Reset password</a>
+  </p>
+  <p style="color:#7d8fa1;font-size:13px;">If you did not ask for this, ignore this email. Your current password stays in place.</p>
+</body>
+</html>

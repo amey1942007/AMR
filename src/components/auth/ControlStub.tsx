@@ -4,7 +4,7 @@ import { AuthGuard } from './AuthGuard';
 import { SignalLoader } from '@/components/utility/SignalLoader';
 
 const ControlPanel = dynamic(
-  () => import('@/components/control/ControlPanel').then((m) => m.ControlPanel),
+  () => import('@/components/control/Dashboard').then((m) => m.Dashboard),
   {
     ssr: false,
     loading: () => (

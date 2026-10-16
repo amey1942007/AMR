@@ -17,7 +17,7 @@ This document is the **complete** playbook for connecting a Pi robot
 | Supabase project `khucmrlbstdlbxcuboub` | Live |
 | Tables: `amr_bots`, `operator_profiles`, `permitted_operators`, `amr_bridge_config` | Applied |
 | RPC `touch_amr_bot` (bridge heartbeat) | Applied |
-| Edge Function `operator-auth` (invite-only username login) | Deployed |
+| Edge Function `operator-auth` | Removed from the website repo. Sign-in is email + password on `/sign-in`. Do not redeploy that function. |
 | Auth users / allowlist (`amey` Owner, operators) | Seeded |
 | Protocol TS ↔ Python | In sync (`src/lib/telemetry/protocol.ts` ↔ `amr_telemetry_bridge/protocol.py`) |
 
@@ -319,10 +319,10 @@ running so `/joy` is published at 30 Hz into the existing teleop stack.
 
 Agents integrating the **robot** should not change these unless explicitly asked.
 
+The website sign-in is email + password (`/sign-in`, `/set-password`). The `operator-auth` edge function source has been removed from this repo and must not be redeployed; the site does not call it and does not use Presence. `NEXT_PUBLIC_PRIVATE_CONTROL` is off by default, so the live site still subscribes to the public channels below. The private topics (`bot:<id>:status`, `:ctl`, `:cmd`, `user:<uid>:notify`) are implemented but not the cut-over. See `docs/private-control.md` in the website repo. This bridge still requires `from.rank` ≥ 1 on commands other than `set_rate`; the website no longer sends a rank.
+
 - Channels: `amr-bot-amr4`, `amr-bot-hardware-bot`
 - Events: `telemetry`, `map`, `hb`, `log`, `command`
-- Presence lock for control authority (higher rank preempts)
-- Login: invite-only usernames via Edge Function `operator-auth`
 - Migrations under `supabase/migrations/` in the website repo
 
 Site env (GitHub Pages / build), not Pi:

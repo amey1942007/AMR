@@ -24,7 +24,7 @@ export function ControlPanelLink({
   }
   if (auth.isAvailable()) {
     return (
-      <PillButton kind={kind} href="/login/" className={className}>
+      <PillButton kind={kind} href="/sign-in/" className={className}>
         Control panel
       </PillButton>
     );

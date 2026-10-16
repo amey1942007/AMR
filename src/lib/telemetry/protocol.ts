@@ -2,22 +2,15 @@
 
 export type BotId = 'amr4' | 'hardware-bot';
 
-/** Higher wins control lock. Viewer cannot drive; Operator can; Admin/Owner preempt. */
-export type AuthorityRank = 0 | 1 | 2 | 3;
-
-export const RANK_LABEL: Record<AuthorityRank, string> = {
-  0: 'Viewer',
-  1: 'Operator',
-  2: 'Admin',
-  3: 'Owner',
-};
-
 export const BOTS: { id: BotId; label: string }[] = [
-  { id: 'amr4', label: 'AMR4' },
   { id: 'hardware-bot', label: 'Hardware bot' },
+  { id: 'amr4', label: 'AMR4' },
 ];
 
-export const HEARTBEAT_OFFLINE_MS = 3000;
+/** No telemetry for this long → OFFLINE pill (access-flow spec). */
+export const HEARTBEAT_OFFLINE_MS = 10_000;
+/** Canvas stale veil. */
+export const STALE_VEIL_MS = 2_000;
 export const FULL_RATE_HZ = 10;
 export const BOARD_RATE_HZ = 1;
 /** Mean inter-frame lag above this → status-board fallback. */
@@ -25,6 +18,7 @@ export const LAG_FALLBACK_MS = 800;
 /** Recover to full 3D when lag stays below this for a few samples. */
 export const LAG_RECOVER_MS = 400;
 
+/** Public Realtime topic. Kept until Review & Debugger turns public access off. */
 export function channelName(botId: BotId): string {
   return `amr-bot-${botId}`;
 }
@@ -89,6 +83,7 @@ export interface BotTelemetry {
   /** Optional low-rate JPEG data-URL / base64 — only in full mode when camera enabled. */
   cameraJpegB64?: string | null;
   cameraUrl?: string | null;
+  seqGoals?: { goals: [number, number][]; idx: number } | null;
 }
 
 export interface MapFrame {
@@ -107,8 +102,8 @@ export interface MapFrame {
 export type ControlCommand =
   | { type: 'estop' }
   | { type: 'nudge'; lin: number; ang: number }
-  | { type: 'drive'; lin: number; ang: number } // continuous teleop pulse (same as nudge)
-  | { type: 'joy'; axes: number[]; buttons: number } // Xbox layout → Pi web_gamepad /api/joy
+  | { type: 'drive'; lin: number; ang: number }
+  | { type: 'joy'; a: number[]; b: number }
   | { type: 'nav_goal'; x: number; y: number }
   | { type: 'nav_cancel' }
   | { type: 'vision'; on: boolean }
@@ -119,20 +114,14 @@ export type ControlCommand =
   | { type: 'blacklist'; action: 'clear' }
   | { type: 'set_rate'; mode: 'full' | 'board' };
 
+/** Public-channel envelope. No token: `amr-bot-*` is still world-readable. */
 export interface CommandEnvelope {
   id: string;
   botId: BotId;
   ts: number;
-  from: { userId: string; email?: string; rank: AuthorityRank };
-  cmd: ControlCommand;
-}
-
-export interface ControlLockPresence {
-  userId: string;
-  email?: string;
-  rank: AuthorityRank;
-  controlling: boolean;
-  since: number;
+  epoch: number;
+  seq: number;
+  cmd: ControlCommand | { type: 'joy'; a: number[]; b: number; axes: number[]; buttons: number };
 }
 
 export interface HeartbeatMsg {
@@ -140,20 +129,6 @@ export interface HeartbeatMsg {
   botId: BotId;
   ts: number;
   bridgeVersion: string;
-}
-
-export function canDrive(rank: AuthorityRank): boolean {
-  return rank >= 1;
-}
-
-/** True if challenger may take (or keep) the control lock from current holder. */
-export function canTakeControl(
-  challenger: AuthorityRank,
-  holder: AuthorityRank | null | undefined,
-): boolean {
-  if (!canDrive(challenger)) return false;
-  if (holder == null) return true;
-  return challenger >= holder;
 }
 
 export function isBotOffline(lastTs: number | null | undefined, now = Date.now()): boolean {
@@ -171,12 +146,4 @@ export function nextLagMs(prev: number, interArrivalMs: number, alpha = 0.35): n
 export function preferBoardMode(lagMs: number, currentlyBoard: boolean): boolean {
   if (currentlyBoard) return lagMs > LAG_RECOVER_MS;
   return lagMs > LAG_FALLBACK_MS;
-}
-
-export function clampAuthority(n: unknown): AuthorityRank {
-  const v = Number(n);
-  if (v >= 3) return 3;
-  if (v === 2) return 2;
-  if (v === 1) return 1;
-  return 0;
 }
