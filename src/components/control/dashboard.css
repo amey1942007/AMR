@@ -67,7 +67,7 @@
 .op .readouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; margin-top: 10px; }
 .op .ro, .op .sys { background: var(--inset); border: 1px solid var(--edge); border-radius: 8px; padding: 7px 10px; }
 .op .ro b, .op .sys b { display: block; font-size: 11px; color: var(--dim); font-weight: 600; }
-.op .ro span { font-family: ui-monospace, Consolas, monospace; font-size: 15px; color: var(--acc); }
+.op .ro span { font-family: ui-monospace, Consolas, monospace; font-size: 15px; color: var(--acc); white-space: nowrap; }
 .op .sys span { font-family: ui-monospace, Consolas, monospace; font-size: 14px; color: var(--acc); }
 .op .navmode { margin-top: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; color: var(--dim); font-size: 13px; }
 .op .navmode select, .op .tool input, .op .sq-in, .op .mapname, .op-auth input {
@@ -163,6 +163,8 @@
 .op .prompt p { color: var(--dim); font-size: 13px; margin: 4px 0 8px; }
 .op .count { font-family: ui-monospace, Consolas, monospace; font-size: 14px; }
 .op .stack { position: fixed; right: 14px; top: 62px; z-index: 8; display: flex; flex-direction: column; gap: 8px; width: 360px; max-width: calc(100vw - 28px); }
+/* Header is about 65px; the latched bar is 40px. 62px still clears a header with no bar. */
+.op:has(.op-estop-bar) .stack { top: 105px; }
 .op .chip { background: var(--inset); color: var(--dim); border-radius: 99px; padding: 2px 8px; font-size: 12px; }
 
 .op .toasts { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 9; }
