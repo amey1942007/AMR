@@ -48,9 +48,9 @@ Production Pages builds bake in the project URL + **publishable** key (safe for 
 | Contact form | `public.contact_submissions` (anon insert-only) |
 | Simulation video | `public.site_videos` row `id = 'simulation'`; set `youtube_id` / `vimeo_id` / file `sources`, then `published = true` |
 
-**Control panel flow:** nav **Control panel** → `/login/` → after sign-in → `/control/` (live 3D remote panel for both bots). Hosted on **amrslam.tech/control** (same-origin auth; better than a separate bot subdomain for this static+Supabase setup). Dashboard → **Authentication → URL configuration**: Site URL `https://amrslam.tech`, redirect allow `https://amrslam.tech/**`.
+**Control panel flow:** nav **Control panel** → `/sign-in/` (email + password; `/login/` is the same page) → `/control/` (instrument dashboard for both bots). Invite and recovery links land on `/set-password`. Hosted on **amrslam.tech/control**. Dashboard → **Authentication → URL configuration**: Site URL `https://amrslam.tech`, redirect allow `https://amrslam.tech/**`. Paste `docs/operator-invite-email.html` into the invite and recovery templates. The flag `NEXT_PUBLIC_PRIVATE_CONTROL` stays unset so the live site keeps the public `amr-bot-*` channel until cut-over; see `docs/private-control.md`.
 
-**Remote ops (amr-bridge):** apply `supabase/migrations/20261015130000_operator_profiles_and_bots.sql`, set `operator_profiles.authority_rank` for admins (0 viewer … 3 owner), run `amr-bridge/` on each Pi (Tailscale + optional Cloudflare Tunnel for camera). See `amr-bridge/README.md`.
+**Remote ops (amr-bridge):** operator profiles are in `supabase/migrations/20261015131105_operator_profiles_and_bots.sql`. Run `amr-bridge/` on each Pi (Tailscale + optional Cloudflare Tunnel for camera). See `amr-bridge/README.md`. Who may drive is the control lease (`join_bot` / `bot_heartbeat`), not `authority_rank`.
 
 ## Contact adapter (`NEXT_PUBLIC_CONTACT_ADAPTER`)
 `supabase | http | mailto` (+ `mock` in dev/test only; a production build never uses the mock). Unset → mock in dev; production → `supabase` if URL + **publishable** key are set, else `mailto` (form hidden, mailto button). Secret/service-role keys are rejected. 10 s request timeout. supabase-js loads on first submit.

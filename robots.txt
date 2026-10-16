@@ -1,6 +1,8 @@
 User-agent: *
 Allow: /
 Disallow: /login/
+Disallow: /sign-in/
+Disallow: /set-password/
 Disallow: /control/
 Disallow: /maintenance/
 Sitemap: https://amrslam.tech/sitemap.xml

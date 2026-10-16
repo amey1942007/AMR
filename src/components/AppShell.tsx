@@ -1,6 +1,7 @@
 'use client';
 import dynamic from 'next/dynamic';
 import { useEffect, useState, type ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import { ServicesProvider } from '@/components/providers/ServicesProvider';
 import { SkipLink } from '@/components/nav/SkipLink';
 import { TopBar } from '@/components/nav/TopBar';
@@ -33,14 +34,19 @@ function LazyDialogs() {
   );
 }
 
+function operatorRoute(path: string) {
+  return /^\/(control|sign-in|set-password|login)(\/|$)/.test(path);
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
+  const operator = operatorRoute(usePathname() || '');
   return (
     <ServicesProvider>
       <SkipLink />
-      <TopBar />
+      {!operator && <TopBar />}
       <main id="main">{children}</main>
-      <Toast />
-      <LazyDialogs />
+      {!operator && <Toast />}
+      {!operator && <LazyDialogs />}
     </ServicesProvider>
   );
 }

@@ -1,0 +1,277 @@
+import { describe, expect, it } from 'vitest';
+import { privateControlEnabled, privateListenTopics, privateTopics, publicChannel, shouldHoldCmdChannel } from '@/lib/telemetry/channels';
+import {
+  alignedNow,
+  clampLinAng,
+  clampToolParams,
+  cmdChannelConfig,
+  commandDelivery,
+  commandRejectText,
+  createSeqCounter,
+  estopLatchAllowed,
+  estopRpcFallback,
+  estopUsesRpc,
+  mapNameError,
+  parseCmdAck,
+  isContinuous,
+  privateCommandRoute,
+  payloadHasToken,
+  privateCmdPayload,
+  publicCommandEnvelope,
+  serverOffsetFromLease,
+  shouldFastPoll,
+} from '@/lib/telemetry/commands';
+import {
+  countdownFraction,
+  formatCountdown,
+  parseHeartbeat,
+  passwordRules,
+  respondFailure,
+  secondsRemaining,
+  strengthSegments,
+} from '@/lib/control/access';
+import { cameraSrc, normalizeTelemetry } from '@/lib/telemetry/normalize';
+
+describe('private control flag', () => {
+  it('keeps the public channel unless the flag is explicitly on', () => {
+    expect(privateControlEnabled('')).toBe(false);
+    expect(privateControlEnabled('0')).toBe(false);
+    expect(privateControlEnabled('false')).toBe(false);
+    expect(privateControlEnabled('off')).toBe(false);
+    for (const on of ['1', 'true', 'on', 'yes', ' TRUE ']) {
+      expect(privateControlEnabled(on)).toBe(true);
+    }
+  });
+
+  it('names public and private topics', () => {
+    expect(publicChannel('amr4')).toBe('amr-bot-amr4');
+    expect(privateTopics('hardware-bot', 'uid-1')).toEqual({
+      status: 'bot:hardware-bot:status',
+      ctl: 'bot:hardware-bot:ctl',
+      cmd: 'bot:hardware-bot:cmd',
+      notify: 'user:uid-1:notify',
+    });
+  });
+});
+
+describe('command wire format', () => {
+  it('uses a clock seq so a new epoch cannot go backwards', () => {
+    let clock = 1_700_000_000_000;
+    const seq = createSeqCounter(() => clock);
+    expect(seq.next(4)).toBe(clock);
+    clock += 5;
+    expect(seq.next(4)).toBe(clock);
+    const held = seq.next(4);
+    expect(held).toBe(clock + 1);
+    clock = 1_700_000_000_100;
+    expect(seq.next(5)).toBe(clock);
+  });
+
+  it('puts the token only on the private payload, with both joy shapes', () => {
+    const joy = { type: 'joy' as const, a: [0, 1, 0, 0, 0, 0, 0, 0], b: 1 };
+    const priv = privateCmdPayload(joy, { epoch: 3, token: 'lease-token', seq: 2, ts: 9 });
+    expect(priv).toMatchObject({ epoch: 3, token: 'lease-token', seq: 2, ts: 9, type: 'joy', b: 1, axes: joy.a, buttons: 1 });
+    expect(payloadHasToken(priv)).toBe(true);
+
+    const pub = publicCommandEnvelope('amr4', joy, { id: 'c1', epoch: 3, seq: 2, ts: 9 });
+    expect(payloadHasToken(pub)).toBe(false);
+    expect(pub).not.toHaveProperty('token');
+    expect(pub).not.toHaveProperty('from');
+    const cmd = pub.cmd as { a: number[]; axes: number[]; buttons: number };
+    expect(cmd.axes).toEqual(joy.a);
+    expect(cmd.buttons).toBe(1);
+  });
+
+  it('treats estop, nudge, joy and drive as continuous', () => {
+    expect(isContinuous({ type: 'estop' })).toBe(true);
+    expect(isContinuous({ type: 'nudge', lin: 0, ang: 0 })).toBe(true);
+    expect(isContinuous({ type: 'nav_goal', x: 1, y: 2 })).toBe(false);
+    expect(isContinuous({ type: 'run_tool', tool: 'imu_test' })).toBe(false);
+  });
+
+  it('clamps teleop and tool inputs', () => {
+    expect(clampLinAng(1, -2)).toEqual({ lin: 0.3, ang: -1 });
+    expect(clampToolParams('imu_calibration', { speed: 0.5, rotations: 2 })).toEqual({ speed: '0.5', rotations: '2' });
+    expect(clampToolParams('imu_calibration', { speed: 2, rotations: 2 })).toBeNull();
+    expect(clampToolParams('drive_distance', { distance: 1, maxVel: 0.3 })).toEqual({ distance: '1', max_vel: '0.3' });
+    expect(clampToolParams('drive_distance', { distance: 9, maxVel: 0.3 })).toBeNull();
+  });
+
+  it('keeps :cmd off the listen set and off viewers', () => {
+    expect(privateListenTopics('amr4', 'uid-1')).toEqual({
+      status: 'bot:amr4:status',
+      ctl: 'bot:amr4:ctl',
+      notify: 'user:uid-1:notify',
+    });
+    expect(shouldHoldCmdChannel('join_bot', 'controller')).toBe(true);
+    expect(shouldHoldCmdChannel('join_bot', 'viewer')).toBe(false);
+    expect(shouldHoldCmdChannel('control_gained', 'controller')).toBe(true);
+    expect(shouldHoldCmdChannel('accept', 'controller')).toBe(true);
+    expect(shouldHoldCmdChannel('heartbeat', 'controller')).toBe(true);
+    expect(shouldHoldCmdChannel('heartbeat', 'viewer')).toBe(false);
+    expect(shouldHoldCmdChannel('resubscribe', 'controller')).toBe(true);
+    expect(shouldHoldCmdChannel('resubscribe', 'viewer')).toBe(false);
+    expect(shouldHoldCmdChannel('control_lost', 'controller')).toBe(false);
+  });
+
+  it('sends every command type on :cmd and reserves send_command for an unsubscribed E-STOP', () => {
+    for (const type of ['nav_goal', 'run_tool', 'nudge', 'joy', 'vision', 'save_map', 'blacklist', 'estop']) {
+      expect(privateCommandRoute(type, true)).toBe('cmd');
+    }
+    expect(privateCommandRoute('nav_goal', false)).toBe('blocked');
+    expect(privateCommandRoute('run_tool', false)).toBe('blocked');
+    expect(privateCommandRoute('estop', false)).toBe('estop-rpc');
+    expect(estopUsesRpc({ cmdSubscribed: false })).toBe(true);
+    expect(estopUsesRpc({ cmdSubscribed: true })).toBe(false);
+
+    let clock = 1_700_000_000_000;
+    const seq = createSeqCounter(() => clock);
+    const meta = { epoch: 4, token: 'lease-token', ts: 9 };
+    const nav = privateCmdPayload({ type: 'nav_goal', x: 1.5, y: 2 }, { ...meta, seq: seq.next(4) });
+    const tool = privateCmdPayload({ type: 'run_tool', tool: 'imu_test', params: { speed: 0.5 } }, { ...meta, seq: seq.next(4) });
+    expect(nav).toMatchObject({ type: 'nav_goal', x: 1.5, y: 2, epoch: 4, token: 'lease-token', seq: clock, ts: 9 });
+    expect(payloadHasToken(nav)).toBe(true);
+    clock += 1;
+    expect(tool).toMatchObject({ type: 'run_tool', tool: 'imu_test', token: 'lease-token', seq: clock });
+    expect(tool.seq).toBe(nav.seq as number + 1);
+  });
+
+  it('does not latch an RPC-only E-STOP and requires a matching cmd_ack', () => {
+    expect(cmdChannelConfig()).toEqual({ private: true, broadcast: { ack: true } });
+    const rpc = estopRpcFallback();
+    expect(rpc).toEqual({ ok: false, via: 'rpc', error: 'E-STOP not confirmed, use the physical stop' });
+    expect(estopLatchAllowed(rpc)).toBe(false);
+    expect(estopLatchAllowed({ ok: true, via: 'rpc' })).toBe(false);
+    expect(estopLatchAllowed({ ok: true })).toBe(false);
+    expect(estopLatchAllowed(commandDelivery(null, 'estop'))).toBe(false);
+    expect(commandDelivery(null, 'estop').error).toBe('E-STOP not confirmed, use the physical stop');
+    expect(commandDelivery(null, 'other')).toEqual({ ok: false, via: 'timeout', error: 'not confirmed' });
+
+    expect(parseCmdAck({ seq: 10, ok: true })).toEqual({ seq: 10, ok: true });
+    expect(parseCmdAck({ seq: 10, ok: false, reason: 'bad token' })).toEqual({ seq: 10, ok: false, reason: 'bad token' });
+    expect(parseCmdAck({ seq: 11, ok: false, reason: 'stale epoch' })?.reason).toBe('stale epoch');
+    expect(parseCmdAck({ seq: 12, ok: false, reason: 'lower seq' })?.reason).toBe('lower seq');
+    expect(parseCmdAck({ seq: 13, ok: false, reason: 'sanitize' })?.reason).toBe('sanitize');
+    expect(parseCmdAck({ seq: '10', ok: true })).toBeNull();
+    expect(parseCmdAck(null)).toBeNull();
+
+    const accepted = commandDelivery({ seq: 10, ok: true }, 'estop');
+    expect(accepted).toEqual({ ok: true, via: 'ack' });
+    expect(estopLatchAllowed(accepted)).toBe(true);
+    const rejected = commandDelivery({ seq: 10, ok: false, reason: 'bad token' }, 'estop');
+    expect(rejected).toEqual({ ok: false, via: 'ack', error: 'bad token' });
+    expect(estopLatchAllowed(rejected)).toBe(false);
+    expect(estopLatchAllowed({ ok: true, via: 'broadcast' })).toBe(true);
+    expect(estopLatchAllowed({ ok: false, via: 'broadcast' })).toBe(false);
+  });
+
+  it('rejects map names outside letters, numbers, underscore, and hyphen', () => {
+    expect(mapNameError('')).toBeNull();
+    expect(mapNameError('lab_1-map')).toBeNull();
+    expect(mapNameError('A'.repeat(64))).toBeNull();
+    expect(mapNameError('has space')).toMatch(/letters, numbers/);
+    expect(mapNameError('room.pgm')).toMatch(/letters, numbers/);
+    expect(mapNameError('A'.repeat(65))).toMatch(/letters, numbers/);
+  });
+
+  it('shows the send_command limit phrases and aligns time from the lease', () => {
+    expect(commandRejectText('rate limited')).toBe('rate limited');
+    expect(commandRejectText('ERROR: command too large')).toBe('command too large');
+    expect(commandRejectText('not_controller')).toBeNull();
+    const received = Date.parse('2026-10-16T00:00:00Z');
+    expect(serverOffsetFromLease('2026-10-16T00:00:15.000Z', received)).toBe(0);
+    expect(serverOffsetFromLease('2026-10-16T00:00:15.250Z', received)).toBe(250);
+    expect(serverOffsetFromLease(null, received)).toBeNull();
+    expect(alignedNow(1_000, 250)).toBe(1_250);
+    expect(alignedNow(1_000, null)).toBe(1_000);
+  });
+
+  it('polls faster while a request is in flight', () => {
+    expect(shouldFastPoll({ myStatus: 'pending', incoming: 0 })).toBe(true);
+    expect(shouldFastPoll({ myStatus: null, incoming: 1 })).toBe(true);
+    expect(shouldFastPoll({ myStatus: 'denied', incoming: 0 })).toBe(false);
+  });
+});
+
+describe('access flow parsers', () => {
+  it('parses a heartbeat and hides the token from viewers', () => {
+    const view = parseHeartbeat({
+      role: 'viewer',
+      bot_id: 'amr4',
+      epoch: 2,
+      controller: 'abc',
+      controller_name: 'Ada',
+      token: 'should-not-stick',
+      pending_requests: [{ id: 'r1', requester: 'u2', name: 'Bea', expires_at: '2026-10-16T00:00:10Z' }],
+      my_request: { id: 'r1', status: 'pending', expires_at: '2026-10-16T00:00:10Z' },
+      retry_after: null,
+    });
+    expect(view?.role).toBe('viewer');
+    expect(view?.token).toBeNull();
+    expect(view?.controllerName).toBe('Ada');
+    expect(view?.pendingRequests[0]?.name).toBe('Bea');
+    expect(view?.myRequest?.status).toBe('pending');
+
+    const drive = parseHeartbeat({ role: 'controller', epoch: 2, token: 'lease-token' });
+    expect(drive?.token).toBe('lease-token');
+  });
+
+  it('formats the 10s countdown', () => {
+    const now = Date.parse('2026-10-16T00:00:00Z');
+    const exp = '2026-10-16T00:00:10Z';
+    expect(secondsRemaining(exp, now)).toBe(10);
+    expect(formatCountdown(10)).toBe('0:10');
+    expect(countdownFraction(exp, now)).toBe(1);
+    expect(secondsRemaining(exp, now + 10_500)).toBe(0);
+  });
+
+  it('maps respond failures and password rules', () => {
+    expect(respondFailure('expired')).toBe('ended');
+    expect(respondFailure('not_found')).toBe('ended');
+    expect(respondFailure('denied')).toBe('ended');
+    expect(respondFailure('requester_inactive')).toBe('left');
+    expect(respondFailure('not_controller')).toBe('lost');
+    expect(respondFailure('network')).toBe('retry');
+    expect(passwordRules('short', 'short').length).toBe(false);
+    expect(passwordRules('longenough1', 'longenough1')).toEqual({ length: true, match: true });
+    expect(passwordRules('longenough1', 'longenough2').match).toBe(false);
+    expect(strengthSegments('')).toBe(0);
+    expect(strengthSegments('Longenough1!')).toBeGreaterThan(0);
+  });
+});
+
+describe('telemetry normalizer', () => {
+  it('accepts the in-repo camelCase payload and the assumed snake_case keys', () => {
+    const camel = normalizeTelemetry({
+      pose: [1, 2, 0.1],
+      mapPose: [3, 4, 0],
+      yoloDet: ['chair'],
+      cameraJpegB64: 'abc123456789012345',
+      nodes: { slam_toolbox: true },
+      sys: { cpu: 10, mem: [1, 2], up: '1h' },
+    });
+    expect(camel?.mapPose).toEqual([3, 4, 0]);
+    expect(camel?.yoloText).toContain('chair');
+    expect(camel?.camera).toBe('abc123456789012345');
+    expect(cameraSrc(camel!.camera)).toBe('data:image/jpeg;base64,abc123456789012345');
+    expect(camel?.sys.mem).toEqual([1, 2]);
+    expect(camel?.sys.up).toBe('1h');
+
+    const snake = normalizeTelemetry({
+      map_pose: [5, 6, 0],
+      yolo_det: [{ name: 'door' }],
+      camera_frame: 'framebytes1234567890',
+      sys: { ram: [3, 4], uptime: '2h', soc: 40 },
+    });
+    expect(snake?.mapPose).toEqual([5, 6, 0]);
+    expect(snake?.yoloText).toContain('door');
+    expect(snake?.camera).toBe('framebytes1234567890');
+    expect(snake?.sys.mem).toEqual([3, 4]);
+    expect(snake?.sys.up).toBe('2h');
+    expect(snake?.sys.temp).toBe(40);
+
+    const xy = normalizeTelemetry({ map_pose: [0.82, 0.28] });
+    expect(xy?.mapPose).toEqual([0.82, 0.28, 0]);
+    expect(xy?.mapPose ? `${xy.mapPose[0].toFixed(2)}, ${xy.mapPose[1].toFixed(2)}` : '').toBe('0.82, 0.28');
+  });
+});
