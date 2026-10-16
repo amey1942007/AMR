@@ -50,7 +50,7 @@ Production Pages builds bake in the project URL + **publishable** key (safe for 
 
 **Control panel flow:** nav **Control panel** → `/sign-in/` (email + password; `/login/` is the same page) → `/control/` (instrument dashboard for both bots). Invite and recovery links land on `/set-password`. Hosted on **amrslam.tech/control**. Dashboard → **Authentication → URL configuration**: Site URL `https://amrslam.tech`, redirect allow `https://amrslam.tech/**`. Paste `docs/operator-invite-email.html` into the invite and recovery templates. The flag `NEXT_PUBLIC_PRIVATE_CONTROL` stays unset so the live site keeps the public `amr-bot-*` channel until cut-over; see `docs/private-control.md`.
 
-**Remote ops (amr-bridge):** run `amr-bridge/` on each Pi (Tailscale + optional Cloudflare Tunnel for camera). See `amr-bridge/README.md`. Who may drive is the control lease (`join_bot` / `bot_heartbeat`), not `authority_rank`.
+**Remote ops (amr-bridge):** operator profiles are in `supabase/migrations/20261015131105_operator_profiles_and_bots.sql`. Run `amr-bridge/` on each Pi (Tailscale + optional Cloudflare Tunnel for camera). See `amr-bridge/README.md`. Who may drive is the control lease (`join_bot` / `bot_heartbeat`), not `authority_rank`.
 
 ## Contact adapter (`NEXT_PUBLIC_CONTACT_ADAPTER`)
 `supabase | http | mailto` (+ `mock` in dev/test only; a production build never uses the mock). Unset → mock in dev; production → `supabase` if URL + **publishable** key are set, else `mailto` (form hidden, mailto button). Secret/service-role keys are rejected. 10 s request timeout. supabase-js loads on first submit.
