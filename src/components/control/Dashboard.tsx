@@ -373,6 +373,7 @@ export function Dashboard() {
         <Sign id="nodata" on={tel.signs.active === 'nodata'} label={SIGN_NO_DATA} />
         <Sign id="down" on={tel.signs.active === 'down'} label={SIGN_DOWN} />
         <Sign id="error" on={tel.signs.active === 'error'} label={SIGN_ERROR} detail={tel.signs.errorReason} />
+        {tel.channelNote && <span className="op-note">{tel.channelNote}</span>}
         <span className="op-telem mono" aria-label="Telemetry">
           x {fmt(tel.frame?.pose?.[0], 2)} · y {fmt(tel.frame?.pose?.[1], 2)} · yaw {tel.frame?.pose ? (tel.frame.pose[2] * 57.2958).toFixed(1) : '–'}° · v {fmt(tel.frame?.vel[0], 2)} m/s
         </span>

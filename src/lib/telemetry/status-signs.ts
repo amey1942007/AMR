@@ -101,8 +101,11 @@ export function statusErrorReason(facts: StatusSignFacts): string | null {
   }
   if (facts.telemetryUnreadable) return 'Telemetry error';
   if (facts.unreadable) return UNREADABLE_STATUS;
+  // A fresh bridge frame means the data channel is delivering. A latched
+  // CHANNEL_ERROR / CLOSED, or a ctl/notify failure, must not say the status
+  // channel is down while telemetry or hb is still arriving.
   if ((facts.channelFailed || facts.realtimeDown) && (up || sessionHeartbeatOk(facts))) {
-    return 'Status channel error';
+    if (!telemetryFresh(facts) && !bridgeFresh(facts)) return 'Status channel error';
   }
   if (
     sessionHeartbeatOk(facts)

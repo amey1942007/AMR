@@ -30,7 +30,7 @@ import {
   secondsRemaining,
   strengthSegments,
 } from '@/lib/control/access';
-import { cameraSrc, normalizeTelemetry } from '@/lib/telemetry/normalize';
+import { cameraSrc, holdScan, normalizeMap, normalizeTelemetry } from '@/lib/telemetry/normalize';
 
 describe('private control flag', () => {
   it('keeps the public channel unless the flag is explicitly on', () => {
@@ -273,5 +273,54 @@ describe('telemetry normalizer', () => {
     const xy = normalizeTelemetry({ map_pose: [0.82, 0.28] });
     expect(xy?.mapPose).toEqual([0.82, 0.28, 0]);
     expect(xy?.mapPose ? `${xy.mapPose[0].toFixed(2)}, ${xy.mapPose[1].toFixed(2)}` : '').toBe('0.82, 0.28');
+  });
+
+  it('keeps the last scan when a full-rate frame sends scan: null and accepts 90 points', () => {
+    const scan: [number, number][] = Array.from({ length: 90 }, (_, i) => [Number((i * 0.07).toFixed(3)), 1.25]);
+    const raw = {
+      ts: 10,
+      botId: 'hardware-bot',
+      seq: 4,
+      mode: 'full',
+      pose: [0.1, 0.2, 0.3],
+      mapPose: [0.4, 0.5],
+      vel: [0.2, 0],
+      cmd: [0.1, 0],
+      imu: { gz: 0.01 },
+      scan,
+    };
+    const first = normalizeTelemetry(raw);
+    expect(first?.pose).toEqual([0.1, 0.2, 0.3]);
+    expect(first?.mapPose).toEqual([0.4, 0.5, 0]);
+    expect(first?.scan).toHaveLength(90);
+    expect(first?.scan[0]).toEqual([0, 1.25]);
+    expect(first?.scan[89]).toEqual([6.23, 1.25]);
+
+    const nextRaw = { ...raw, seq: 5, pose: [0.2, 0.2, 0.3], scan: null };
+    const next = normalizeTelemetry(nextRaw);
+    const held = holdScan(first, next!, nextRaw);
+    expect(held.pose).toEqual([0.2, 0.2, 0.3]);
+    expect(held.scan).toHaveLength(90);
+    expect(held.scan).toBe(first!.scan);
+
+    const missing = { ...raw, seq: 6, scan: undefined };
+    expect(holdScan(held, normalizeTelemetry(missing)!, missing).scan).toHaveLength(90);
+
+    const board = { ...raw, seq: 7, mode: 'board', scan: [] as [number, number][] };
+    expect(holdScan(held, normalizeTelemetry(board)!, board).scan).toEqual([]);
+
+    expect(normalizeTelemetry({ t: 'hb', botId: 'hardware-bot', ts: 1, bridgeVersion: '1' })).toBeNull();
+    expect(normalizeTelemetry({ t: 'log', botId: 'hardware-bot', text: 'ready' })).toBeNull();
+    expect(normalizeMap({
+      t: 'map',
+      botId: 'hardware-bot',
+      ts: 5,
+      w: 2,
+      h: 2,
+      res: 0.05,
+      origin: [0, 0],
+      tf: [1, 2, 3],
+      data: 'abc',
+    })?.tf).toEqual([1, 2, 3]);
   });
 });

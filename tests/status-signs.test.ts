@@ -102,6 +102,30 @@ describe('status signs', () => {
     expect(view.errorReason).toBe("Can't read bot status");
   });
 
+  it('does not call fresh telemetry a status-channel error', () => {
+    const view = deriveStatusSigns(facts({
+      phase: 'live',
+      telemetryAt: NOW - 100,
+      bridgeHeartbeatAt: NOW - 100,
+      channelFailed: true,
+      realtimeDown: true,
+    }));
+    expect(view.active).toBeNull();
+    expect(view.errorReason).toBeNull();
+  });
+
+  it('keeps connected-no-data when the bridge heartbeat is fresh and the channel flag is stale', () => {
+    const view = deriveStatusSigns(facts({
+      phase: 'idle',
+      bridgeHeartbeatAt: NOW - 500,
+      subscribedAt: NOW - 1_000,
+      channelFailed: true,
+      realtimeDown: true,
+    }));
+    expect(view.active).toBe('nodata');
+    expect(view.errorReason).toBeNull();
+  });
+
   it('shows a status-channel error when the bot is still present', () => {
     const view = deriveStatusSigns(facts({
       phase: 'idle',

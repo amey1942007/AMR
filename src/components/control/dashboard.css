@@ -81,6 +81,7 @@
 }
 .op-sign .sign-hollow { border-radius: 50%; border: 1.5px solid currentColor; background: transparent; }
 .op-sign .sign-x { display: block; }
+.op-note { font-size: 13px; font-weight: 500; color: var(--dim); }
 .op-telem { margin-left: auto; font-size: 13px; color: var(--acc); }
 
 .op-grow { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
