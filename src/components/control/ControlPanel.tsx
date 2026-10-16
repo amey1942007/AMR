@@ -19,10 +19,10 @@ import { BackgroundFx } from './BackgroundFx';
 
 type WorldPt = [number, number];
 
-function statusTone(s: string) {
-  if (s === 'online') return 'text-[var(--success)]';
-  if (s === 'degraded') return 'text-[#ffb74d]';
-  if (s === 'connecting') return 'text-muted';
+function statusTone(phase: string, highLag: boolean) {
+  if (phase === 'live') return highLag ? 'text-[#ffb74d]' : 'text-[var(--success)]';
+  if (phase === 'idle') return 'text-[var(--success)]';
+  if (phase === 'connecting') return 'text-muted';
   return 'text-[var(--danger)]';
 }
 
@@ -63,7 +63,7 @@ function Inner() {
   const rank = tel.profile?.rank ?? 0;
   const canDriveNow = tel.iAmController && canDrive(rank);
   const canEstop = canDrive(rank);
-  const showLive = tel.status !== 'offline';
+  const showLive = tel.link.phase !== 'offline';
 
   const sendCmd = tel.sendCommand;
   const send = useCallback((cmd: Parameters<typeof sendCmd>[0]) => {
@@ -189,11 +189,18 @@ function Inner() {
       </header>
 
       <div className="mb-4 flex flex-wrap items-center gap-3 text-[length:var(--text-small)]">
-        <span className={`font-mono uppercase tracking-wider ${statusTone(tel.status)}`}>
-          {tel.status === 'offline' ? 'BOT OFFLINE' : tel.status}
+        <span
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className={`font-mono tracking-wider ${statusTone(tel.link.phase, tel.viewMode === 'board')}`}
+        >
+          {tel.link.label}
         </span>
-        {tel.status !== 'offline' && (
-          <span className="font-mono text-muted">lag {Math.round(tel.lagMs)} ms · {tel.viewMode}</span>
+        {tel.link.showLag && (
+          <span className="font-mono text-muted" aria-hidden="true">
+            lag {Math.round(tel.lagMs)} ms · {tel.viewMode}
+          </span>
         )}
         {tel.frame?.tool && (
           <span className="rounded-full bg-amber-400/15 px-2 py-0.5 font-mono text-amber-200">{tel.frame.tool}</span>
@@ -224,12 +231,12 @@ function Inner() {
         )}
       </div>
 
-      {tel.status === 'offline' ? (
+      {tel.link.phase === 'offline' ? (
         <div className="grid min-h-[50vh] place-items-center border border-white/10 bg-black/30 px-6 py-16 text-center">
           <div>
-            <p className="font-display text-[length:var(--text-h3)] text-white">BOT OFFLINE</p>
+            <p className="font-display text-[length:var(--text-h3)] text-white">Bot offline</p>
             <p className="mt-3 max-w-md text-[length:var(--text-small)] text-muted">
-              No heartbeat from the Pi bridge (Tailscale / Cloudflare). Last frame older than 3 seconds.
+              {tel.link.offlineDetail}
             </p>
           </div>
         </div>
@@ -254,6 +261,7 @@ function Inner() {
                     canInteract={canDriveNow}
                     onNavGoal={onNavGoal}
                     onBlacklist={onBlacklist}
+                    placeholder={tel.link.mapPlaceholder ?? 'waiting for telemetry…'}
                     className="h-full"
                   />
                 )}
@@ -390,7 +398,14 @@ function Inner() {
 
             <div className="border border-white/10 bg-black/25 p-4">
               <p className="eyebrow text-muted mb-3">System status</p>
-              <StatusBoard frame={tel.frame} status={tel.status} lagMs={tel.lagMs} dense />
+              <StatusBoard
+                frame={tel.frame}
+                status={tel.link.phase}
+                linkLabel={tel.link.label}
+                showLag={tel.link.showLag}
+                lagMs={tel.lagMs}
+                dense
+              />
             </div>
           </aside>
         </div>

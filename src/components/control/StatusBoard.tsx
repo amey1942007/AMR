@@ -1,7 +1,7 @@
 'use client';
 import type { ReactNode } from 'react';
+import type { LinkPhase } from '@/lib/telemetry/link-status';
 import type { BotTelemetry, SysVitals, TopicRate } from '@/lib/telemetry/protocol';
-import type { LinkStatus as HookStatus } from '@/lib/telemetry/useBotTelemetry';
 
 function Dot({ ok }: { ok: boolean }) {
   return (
@@ -96,11 +96,16 @@ export function StatusBoard({
   status,
   lagMs,
   dense = false,
+  linkLabel,
+  showLag = false,
 }: {
   frame: BotTelemetry | null;
-  status: HookStatus;
+  status: LinkPhase;
   lagMs: number;
   dense?: boolean;
+  /** Stable link phrase. Lag stays out of this string. */
+  linkLabel?: string;
+  showLag?: boolean;
 }) {
   const pose = frame?.pose;
   const rates = frame?.rates ?? {};
@@ -112,8 +117,8 @@ export function StatusBoard({
     <div className={`grid gap-5 ${dense ? '' : 'md:grid-cols-2'}`}>
       <section>
         <p className="eyebrow text-muted mb-3">System</p>
-        <Row label="Link" value={status.toUpperCase()} />
-        <Row label="Lag" value={`${Math.round(lagMs)} ms`} />
+        <Row label="Link" value={linkLabel ?? status} />
+        <Row label="Lag" value={showLag ? `${Math.round(lagMs)} ms` : '—'} />
         <Row
           label="Pose odom"
           value={pose ? `${pose[0].toFixed(2)}, ${pose[1].toFixed(2)}, ${(pose[2] * 57.2958).toFixed(1)}°` : '—'}

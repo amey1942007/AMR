@@ -24,6 +24,7 @@ export function LiveMap({
   canInteract,
   onNavGoal,
   onBlacklist,
+  placeholder = 'waiting for telemetry…',
   className = '',
 }: {
   frame: BotTelemetry | null;
@@ -33,6 +34,8 @@ export function LiveMap({
   canInteract: boolean;
   onNavGoal: (x: number, y: number) => void;
   onBlacklist: (x: number, y: number, radius: number) => void;
+  /** Shown when no pose has arrived. Not an aria-live region — the header announces the phase. */
+  placeholder?: string;
   className?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -45,6 +48,7 @@ export function LiveMap({
   const scaleRef = useRef(70);
   const blDragRef = useRef<[number, number, number] | null>(null);
   const lastSeenRef = useRef(0);
+  const placeholderRef = useRef(placeholder);
   const [size, setSize] = useState({ w: 900, h: 560 });
 
   useEffect(() => {
@@ -52,7 +56,8 @@ export function LiveMap({
     mapRef.current = map;
     modeRef.current = navMode;
     queueRef.current = sequentialQueue;
-  }, [frame, map, navMode, sequentialQueue]);
+    placeholderRef.current = placeholder;
+  }, [frame, map, navMode, sequentialQueue, placeholder]);
 
   useEffect(() => {
     if (!frame?.pose) return;
@@ -98,7 +103,7 @@ export function LiveMap({
         ctx.fillStyle = 'rgba(138,135,148,0.7)';
         ctx.font = '14px ui-monospace, monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('waiting for telemetry…', W / 2, H / 2);
+        ctx.fillText(placeholderRef.current, W / 2, H / 2);
         return;
       }
 
@@ -399,7 +404,7 @@ export function LiveMap({
           blDragRef.current = null;
         }}
         role="img"
-        aria-label="Live robot map — odom frame"
+        aria-label={frame?.pose ? 'Live robot map — odom frame' : placeholder}
       />
       <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/50 px-2 py-1 font-mono text-[10px] text-white/60">
         odom · wheel-zoom · {navMode === 'off' ? 'view' : navMode}

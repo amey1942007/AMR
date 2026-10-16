@@ -61,9 +61,14 @@ export function attachControlLock(
   client: SupabaseClient,
   botId: BotId,
   self: OperatorProfile,
+  opts?: { privateChannel?: boolean },
 ): ControlLockApi {
+  // Public amr-bot-* channel unless NEXT_PUBLIC_PRIVATE_CONTROL is exactly "1".
   const channel = client.channel(channelName(botId), {
-    config: { presence: { key: self.userId } },
+    config: {
+      private: opts?.privateChannel === true,
+      presence: { key: self.userId },
+    },
   });
 
   let controller: ControlLockPresence | null = null;
@@ -77,7 +82,9 @@ export function attachControlLock(
   };
 
   channel.on('presence', { event: 'sync' }, sync);
-  channel.subscribe();
+  // Do not subscribe here. supabase-js ignores a second subscribe() once the
+  // socket is opening, so the telemetry hook must be the single subscriber
+  // (broadcast listeners + SUBSCRIBED callback share that join).
 
   const track = async (controlling: boolean) => {
     const payload: ControlLockPresence = {
