@@ -6,7 +6,8 @@ import { useAuth } from '@/lib/useAuth';
 import { readConfig } from '@/lib/config';
 import { asset } from '@/lib/asset';
 import { getAuthClient } from '@/services/supabase-client';
-import { BOTS, HEARTBEAT_OFFLINE_MS, type BotId, type ControlCommand } from '@/lib/telemetry/protocol';
+import { BOTS, type BotId, type ControlCommand } from '@/lib/telemetry/protocol';
+import { offlineMessage, type LinkPhase } from '@/lib/telemetry/link-status';
 import { useControlSession } from '@/lib/telemetry/useControlSession';
 import { clampLinAng, clampToolParams, commandRejectText, estopLatchAllowed, mapNameError, JOY_HZ, NUDGE_REPEAT_MS, ESTOP_RETRY_MS } from '@/lib/telemetry/commands';
 import { COPY, countdownFraction, formatCountdown, initialOf, secondsRemaining } from '@/lib/control/access';
@@ -104,8 +105,10 @@ export function Dashboard() {
 
   const controller = tel.role === 'controller';
   if (!controller && estop !== 'ready') setEstop('ready');
-  const offline = tel.lastTelemetryAt != null && now - tel.lastTelemetryAt > HEARTBEAT_OFFLINE_MS;
-  const canEdit = controller && estop === 'ready' && !offline && !tel.heartbeatStale && !tel.realtimeDown;
+  const robotLive = tel.link.phase === 'live';
+  const canEstop = controller;
+  const canEdit = canEstop && estop === 'ready' && robotLive && !tel.heartbeatStale && !tel.realtimeDown;
+  const highLag = robotLive && tel.slowLink;
   const bot = BOTS.find((b) => b.id === botId)!;
 
   const send = useCallback(async (cmd: ControlCommand) => {
@@ -300,12 +303,6 @@ export function Dashboard() {
   const nodes = tel.frame?.nodes ?? {};
   const nodeKeys = Object.keys(nodes);
   const allOk = nodeKeys.length > 0 && nodeKeys.every((k) => nodes[k]);
-  const overall = tel.realtimeDown ? 'DISCONNECTED'
-    : offline ? 'OFFLINE'
-    : !tel.frame ? 'CONNECTING'
-    : allOk ? 'ALL SYSTEMS GO'
-    : 'DEGRADED';
-  const overallKind = overall === 'ALL SYSTEMS GO' ? 'ok' : 'bad';
   const driverName = tel.controllerId == null
     ? null
     : tel.controllerId === userId ? 'You' : (tel.controllerName || tel.names[tel.controllerId] || 'Someone');
@@ -333,10 +330,14 @@ export function Dashboard() {
             <button key={b.id} type="button" aria-pressed={b.id === botId} onClick={() => { if (b.id !== botId) { setBotId(b.id); joined.current = false; } }}>{b.label}</button>
           ))}
         </div>
-        <span className={`pill ${overallKind}`}>{overall}</span>
-        {!offline && tel.frame?.tool && <span className="pill run">⏳ {tel.frame.tool}</span>}
-        {!offline && tel.frame?.vision && <span className="pill vision">👁 VISION ON</span>}
-        {!offline && tel.frame?.saving && <span className="pill saving">💾 SAVING MAP…</span>}
+        <LinkStatus phase={tel.link.phase} label={tel.link.label} highLag={highLag} />
+        {tel.link.showLag && (
+          <span className="mono" style={{ color: 'var(--warn)' }} aria-hidden="true">lag {Math.round(tel.lagMs)} ms</span>
+        )}
+        {robotLive && <span className={`pill ${allOk ? 'ok' : 'bad'}`}>{allOk ? 'ALL SYSTEMS GO' : 'DEGRADED'}</span>}
+        {robotLive && tel.frame?.tool && <span className="pill run">⏳ {tel.frame.tool}</span>}
+        {robotLive && tel.frame?.vision && <span className="pill vision">👁 VISION ON</span>}
+        {robotLive && tel.frame?.saving && <span className="pill saving">💾 SAVING MAP…</span>}
         <div className="op-grow">
           {tel.joining ? <span className="skel" aria-hidden /> : (
             <span className="who" title="Currently driving">
@@ -358,7 +359,7 @@ export function Dashboard() {
               </div>
             )}
           </span>
-          {controller && (
+          {canEstop && (
             <button type="button" className={`op-estop ${estop !== 'ready' ? 'latched' : ''}`} title="Space or Esc" onClick={() => { if (estop === 'ready') fireEstop(); }} onPointerDown={() => { if (estop === 'latched') startRearm(); }} onPointerUp={cancelRearm} onPointerLeave={cancelRearm}>
               {estop === 'retrying' ? 'Retrying…' : estop === 'latched' ? 'STOPPED · Re-arm' : 'E-STOP'}
               {estop === 'latched' && <span className="hold" style={{ width: `${hold * 100}%` }} />}
@@ -402,8 +403,20 @@ export function Dashboard() {
       <div className="op-grid">
         <section className="card" aria-label="Live view">
           <h2>Live view — odom frame · wheel-zoom · click = nav goal (when armed)</h2>
-          {offline && <p className="offline">{bot.label} is offline · last seen <span className="mono">{tel.lastTelemetryAt ? new Date(tel.lastTelemetryAt).toTimeString().slice(0, 8) : '–'}</span></p>}
-          <LiveCanvas state={tel.frame} map={tel.map} scale={scale} onScale={setScale} canEdit={canEdit} mode={mode} showSlam={showSlam} lastAt={tel.lastTelemetryAt} onNav={(x, y) => void send({ type: 'nav_goal', x, y })} onBlacklist={(x, y, radius) => void send({ type: 'blacklist', action: 'add', x, y, radius, duration })} />
+          {tel.link.phase === 'offline' && (
+            <div className="offline">
+              <p style={{ color: 'var(--tx)', fontWeight: 700 }}>
+                {tel.link.unreadable ? tel.link.label : `${bot.label} is offline`}
+              </p>
+              <p>
+                {tel.link.unreadable
+                  ? tel.link.offlineDetail
+                  : offlineMessage(tel.link.offlineDetail ?? '', tel.link.lastSeenAtMs, now)}
+              </p>
+            </div>
+          )}
+          {!robotLive && <p className="help">Waiting for robot…</p>}
+          <LiveCanvas state={tel.frame} map={tel.map} scale={scale} onScale={setScale} canEdit={canEdit} mode={mode} showSlam={showSlam} lastAt={tel.lastTelemetryAt} placeholder={tel.link.mapPlaceholder} onNav={(x, y) => void send({ type: 'nav_goal', x, y })} onBlacklist={(x, y, radius) => void send({ type: 'blacklist', action: 'add', x, y, radius, duration })} />
           <div className="readouts">
             <Tile k="x (odom)" v={fmt(tel.frame?.pose?.[0], 2)} />
             <Tile k="y (odom)" v={fmt(tel.frame?.pose?.[1], 2)} />
@@ -434,7 +447,7 @@ export function Dashboard() {
             <PadButton label="Forward" glyph="▲" disabled={!canEdit} onDown={() => startNudge(0.15, 0)} onUp={stopNudge} />
             <span />
             <PadButton label="Rotate left" glyph="◀" disabled={!canEdit} onDown={() => startNudge(0, 0.6)} onUp={stopNudge} />
-            <button type="button" aria-label="E-STOP" disabled={!controller} onClick={() => { if (estop === 'ready') fireEstop(); }}>■</button>
+            <button type="button" aria-label="E-STOP" disabled={!canEstop} onClick={() => { if (estop === 'ready') fireEstop(); }}>■</button>
             <PadButton label="Rotate right" glyph="▶" disabled={!canEdit} onDown={() => startNudge(0, -0.6)} onUp={stopNudge} />
             <span />
             <PadButton label="Back" glyph="▼" disabled={!canEdit} onDown={() => startNudge(-0.15, 0)} onUp={stopNudge} />
@@ -454,6 +467,7 @@ export function Dashboard() {
               retryLeft={retryLeft}
               pulse={pulse}
               error={tel.requestError === 'network' || tel.requestError === 'join'}
+              offline={tel.link.phase === 'offline'}
               onRequest={() => void tel.requestControl()}
               onCancel={() => { if (tel.myRequest) void tel.cancelRequest(tel.myRequest.id); }}
               onRetry={() => { if (tel.requestError) void tel.requestControl(); }}
@@ -483,7 +497,7 @@ export function Dashboard() {
             }}
           />
           <WaypointCard seq={tel.frame?.seq ?? null} />
-          <CameraCard frame={tel.frame} lastAt={tel.lastTelemetryAt} now={now} />
+          <CameraCard frame={tel.frame} phase={tel.link.phase} lastAt={tel.lastTelemetryAt} now={now} />
         </div>
 
         <section className="card" id="console" aria-label="Console">
@@ -542,6 +556,7 @@ function AccessBanner(props: {
   retryLeft: number;
   pulse: boolean;
   error: boolean;
+  offline: boolean;
   onRequest: () => void;
   onCancel: () => void;
   onRetry: () => void;
@@ -572,8 +587,8 @@ function AccessBanner(props: {
         {!props.flash && <div>{props.name ? <>You&apos;re viewing. <b>{props.name}</b> is driving.</> : 'Nobody is driving. Take control?'}</div>}
         {props.error && <p className="err">⚠ {COPY.requestFail} <button type="button" className="link" onClick={props.onRetry}>Try again</button></p>}
       </div>
-      <button type="button" className={`btn ${props.pulse && props.retryLeft === 0 ? 'pulse' : ''}`} disabled={props.retryLeft > 0} aria-disabled={props.retryLeft > 0 || undefined} onClick={props.onRequest}>
-        {props.retryLeft > 0 ? `Try again in ${props.retryLeft}s` : 'Request control'}
+      <button type="button" className={`btn ${props.pulse && props.retryLeft === 0 && !props.offline ? 'pulse' : ''}`} disabled={props.retryLeft > 0 || props.offline} title={props.offline ? 'Robot is offline' : undefined} aria-disabled={props.retryLeft > 0 || props.offline || undefined} onClick={props.onRequest}>
+        {!props.offline && props.retryLeft > 0 ? `Try again in ${props.retryLeft}s` : 'Request control'}
       </button>
     </div>
   );
@@ -747,23 +762,49 @@ function WaypointCard({ seq }: { seq: { goals: [number, number][]; idx: number }
   );
 }
 
-function CameraCard({ frame, lastAt, now }: { frame: NormState | null; lastAt: number | null; now: number }) {
-  const src = frame?.camera ? (frame.camera.startsWith('data:') ? frame.camera : `data:image/jpeg;base64,${frame.camera}`) : null;
+function CameraCard({ frame, phase, lastAt, now }: { frame: NormState | null; phase: LinkPhase; lastAt: number | null; now: number }) {
+  const src = phase === 'live' && frame?.vision && frame.camera
+    ? (frame.camera.startsWith('data:') ? frame.camera : `data:image/jpeg;base64,${frame.camera}`)
+    : null;
   const age = lastAt == null ? null : (now - lastAt) / 1000;
+  const copy = phase === 'live' && frame?.vision && !src
+    ? 'Waiting for camera…'
+    : phase === 'live' && !frame?.vision
+      ? 'Vision off — start vision to see camera feed'
+      : phase === 'connecting' || phase === 'live'
+        ? 'Waiting for camera…'
+        : 'Camera unavailable until the robot is live';
   return (
     <section className="card" aria-label="Camera feed">
       <h2>📷 Camera feed</h2>
-      {frame?.vision && src ? (
+      {src ? (
         <div className="camwrap">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="cam" alt="Robot camera" src={src} />
           <span className="camchip">{age != null && age > 3 ? `last frame ${age.toFixed(0)}s ago` : 'LIVE · ~1 fps'}</span>
         </div>
       ) : (
-        <p className="muted">Vision off — start vision to see camera feed</p>
+        <p className="muted">{copy}</p>
       )}
     </section>
   );
+}
+
+function LinkStatus({ phase, label, highLag }: { phase: LinkPhase; label: string; highLag: boolean }) {
+  return (
+    <span className={`pill link ${phase}`} role="status" aria-live="polite" aria-atomic="true">
+      <StatusMark phase={phase} />
+      {label}
+      {highLag && <span className="sr-only"> Slow connection</span>}
+    </span>
+  );
+}
+
+function StatusMark({ phase }: { phase: LinkPhase }) {
+  if (phase === 'connecting') return <span className="status-ring" aria-hidden />;
+  if (phase === 'idle') return <span className="status-idle" aria-hidden />;
+  if (phase === 'live') return <span className="status-live" aria-hidden />;
+  return <span className="status-off" aria-hidden />;
 }
 
 function readGamepad(): { a: number[]; b: number } | null {

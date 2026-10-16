@@ -44,6 +44,21 @@
 .op .pill.vision { background: #0d2b1a; color: var(--acc); }
 .op .pill.saving { background: #102a3a; color: #4fc3f7; }
 .op .pill.viewer { background: var(--inset); color: var(--dim); border: 1px solid var(--edge); }
+.op .pill.link.live { background: #123924; color: var(--ok); }
+.op .pill.link.idle { background: #3a2a10; color: var(--warn); }
+.op .pill.link.connecting { background: var(--inset); color: var(--dim); border: 1px solid var(--edge); }
+.op .pill.link.offline { background: #3c1518; color: var(--err); }
+.op .status-ring, .op .status-idle, .op .status-live, .op .status-off {
+  width: 8px; height: 8px; flex: none; border-radius: 50%; display: inline-block;
+}
+.op .status-ring { border: 1.5px solid var(--dim); animation: control-status-pulse 1.6s ease-out infinite; }
+.op .status-idle { border: 1px solid var(--warn); background: linear-gradient(90deg, var(--warn) 50%, transparent 50%); }
+.op .status-live { background: var(--ok); }
+.op .status-off { border: 1px solid var(--err); background: transparent; }
+@keyframes control-status-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(125, 143, 161, 0.65); }
+  100% { box-shadow: 0 0 0 6px rgba(125, 143, 161, 0); }
+}
 
 .op-grow { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .op-estop {
@@ -209,5 +224,6 @@
 @media (prefers-reduced-motion: reduce) {
   .op .spin { animation: none; border-top-color: var(--warn); }
   .op .pulse { animation: none; }
+  .op .status-ring { animation: none; }
   .op-estop:active { transform: none; }
 }

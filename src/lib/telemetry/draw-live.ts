@@ -29,6 +29,8 @@ export interface DrawInput {
   width: number;
   height: number;
   dpr?: number;
+  /** Shown when there is no pose. Defaults to the connecting copy. */
+  placeholder?: string | null;
 }
 
 export function drawLive(ctx: CanvasRenderingContext2D, d: DrawInput) {
@@ -40,10 +42,12 @@ export function drawLive(ctx: CanvasRenderingContext2D, d: DrawInput) {
   ctx.fillRect(0, 0, w, h);
   const S = d.state;
   if (!S?.pose) {
+    ctx.globalAlpha = 1;
     ctx.fillStyle = '#7d8fa1';
-    ctx.font = '14px system-ui';
+    ctx.font = '14px ui-monospace, Consolas, monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('Waiting for robot…', w / 2, h / 2);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(d.placeholder || 'Waiting for robot…', w / 2, h / 2);
     return;
   }
   const [rx, ry, yaw] = S.pose;

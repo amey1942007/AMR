@@ -15,6 +15,7 @@ export function LiveCanvas({
   mode,
   showSlam,
   lastAt,
+  placeholder,
   onNav,
   onBlacklist,
 }: {
@@ -26,6 +27,7 @@ export function LiveCanvas({
   mode: 'none' | 'nav' | 'nogo';
   showSlam: boolean;
   lastAt: number | null;
+  placeholder: string | null;
   onNav: (x: number, y: number) => void;
   onBlacklist: (x: number, y: number, radius: number) => void;
 }) {
@@ -70,11 +72,12 @@ export function LiveCanvas({
       drawLive(ctx, {
         state, map, trail: trail.current, scale, stale,
         slam: showSlam ? slamRef.current : null, drag: drag.current, width: cssW, height: cssH, dpr,
+        placeholder,
       });
     };
     frame = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frame);
-  }, [state, map, scale, showSlam, lastAt, dragTick]);
+  }, [state, map, scale, showSlam, lastAt, dragTick, placeholder]);
 
   function worldAt(e: PointerEvent<HTMLCanvasElement>) {
     const cv = ref.current;

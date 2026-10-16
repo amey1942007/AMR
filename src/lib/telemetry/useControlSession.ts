@@ -21,7 +21,18 @@ import {
   type CommandResult,
 } from './commands';
 import { privateControlEnabled, privateListenTopics, publicChannel, shouldHoldCmdChannel, type CmdJoinEvent } from './channels';
-import type { BotId, ConsoleLogLine, ControlCommand, MapFrame } from './protocol';
+import {
+  connectingLink,
+  deriveLinkStatus,
+  LAST_SEEN_SAMPLE,
+  nextPollDelay,
+  noteLastSeenFailure,
+  noteLastSeenRead,
+  reduceChannelStatus,
+  type LastSeenSample,
+  type LinkStatusView,
+} from './link-status';
+import { nextLagMs, preferBoardMode, type BotId, type ConsoleLogLine, type ControlCommand, type MapFrame } from './protocol';
 import { normalizeMap, normalizeTelemetry, type NormState } from './normalize';
 import {
   parseHeartbeat,
@@ -51,7 +62,14 @@ export interface ControlSession {
   frame: NormState | null;
   map: MapFrame | null;
   logs: ConsoleLogLine[];
+  /** Local time the latest telemetry broadcast arrived. Heartbeats do not update this. */
   lastTelemetryAt: number | null;
+  /** Connecting / online-no-data / live / offline. Freshness is local receipt time. */
+  link: LinkStatusView;
+  /** Smoothed inter-arrival of telemetry receipts. Shown only while live. */
+  lagMs: number;
+  /** True after lag crosses the fallback threshold, until it recovers. */
+  slowLink: boolean;
   names: Record<string, string>;
   pushLog: (level: string, text: string) => void;
   sendCommand: (cmd: ControlCommand) => Promise<CommandResult>;
@@ -70,10 +88,6 @@ export function useControlSession(
   const [role, setRole] = useState<'controller' | 'viewer' | null>(null);
   const [joining, setJoining] = useState(true);
   const [joinedBot, setJoinedBot] = useState(botId);
-  if (botId !== joinedBot) {
-    setJoinedBot(botId);
-    setJoining(true);
-  }
   const joiningView = client && userId ? joining : false;
   const [epoch, setEpoch] = useState(0);
   const [controllerId, setControllerId] = useState<string | null>(null);
@@ -90,6 +104,14 @@ export function useControlSession(
   const [map, setMap] = useState<MapFrame | null>(null);
   const [logs, setLogs] = useState<ConsoleLogLine[]>([]);
   const [lastTelemetryAt, setLastTelemetryAt] = useState<number | null>(null);
+  const [heartbeatReceivedAt, setHeartbeatReceivedAt] = useState<number | null>(null);
+  const [telemetryReceivedAt, setTelemetryReceivedAt] = useState<number | null>(null);
+  const [lastSeen, setLastSeen] = useState<LastSeenSample>(LAST_SEEN_SAMPLE);
+  const [subscribedAt, setSubscribedAt] = useState<number | null>(null);
+  const [channelFailed, setChannelFailed] = useState(false);
+  const [startedAt, setStartedAt] = useState(() => Date.now());
+  const [lagMs, setLagMs] = useState(0);
+  const [slowLink, setSlowLink] = useState(false);
   const [names, setNames] = useState<Record<string, string>>({});
 
   const tokenRef = useRef<string | null>(null);
@@ -104,6 +126,26 @@ export function useControlSession(
   const offsetRef = useRef<number | null>(null);
   const publicChRef = useRef<RealtimeChannel | null>(null);
   const ackWaiters = useRef(new Map<number, (ack: CmdAck) => void>());
+  const lagRef = useRef(0);
+  const lastArriveRef = useRef(0);
+  const slowRef = useRef(false);
+
+  if (botId !== joinedBot) {
+    setJoinedBot(botId);
+    setJoining(true);
+    setFrame(null);
+    setMap(null);
+    setLastTelemetryAt(null);
+    setHeartbeatReceivedAt(null);
+    setTelemetryReceivedAt(null);
+    setLastSeen(LAST_SEEN_SAMPLE);
+    setSubscribedAt(null);
+    setChannelFailed(false);
+    setStartedAt(Number.POSITIVE_INFINITY);
+    setLagMs(0);
+    setSlowLink(false);
+    setRealtimeDown(false);
+  }
 
   const syncCmd = useCallback((event: CmdJoinEvent, role: 'controller' | 'viewer' | null) => {
     if (!privateControl) return;
@@ -177,6 +219,58 @@ export function useControlSession(
     return () => { live = false; window.clearInterval(id); };
   }, [client, userId]);
 
+  // Signed-in read of amr_bots.last_seen_at. One request at a time. A single
+  // error keeps the last good row; the second consecutive failure is unreadable
+  // and the next try waits 12s. Anon is filtered by RLS (no error, empty row).
+  useEffect(() => {
+    if (!client || !userId) return;
+    let cancelled = false;
+    let timer = 0;
+    let inFlight = false;
+    let sample = LAST_SEEN_SAMPLE;
+    const requested = botId;
+
+    const schedule = (delay: number) => {
+      timer = window.setTimeout(() => { void read(); }, delay);
+    };
+
+    const read = async () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      try {
+        const { data, error } = await client
+          .from('amr_bots')
+          .select('last_seen_at')
+          .eq('id', requested)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error) {
+          sample = noteLastSeenFailure(sample);
+          setLastSeen(sample);
+          schedule(nextPollDelay(sample.failures));
+          return;
+        }
+        const row = data as { last_seen_at?: string | null } | null;
+        sample = noteLastSeenRead(sample, row?.last_seen_at ?? null, Date.now());
+        setLastSeen(sample);
+        schedule(nextPollDelay(0));
+      } catch {
+        if (cancelled) return;
+        sample = noteLastSeenFailure(sample);
+        setLastSeen(sample);
+        schedule(nextPollDelay(sample.failures));
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void read();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [client, userId, botId]);
+
   useEffect(() => {
     if (!client || !userId) return;
     let cancelled = false;
@@ -217,6 +311,10 @@ export function useControlSession(
 
   useEffect(() => {
     if (!client || !userId) return;
+    lagRef.current = 0;
+    lastArriveRef.current = 0;
+    slowRef.current = false;
+    const stamp = window.setTimeout(() => setStartedAt(Date.now()), 0);
     let cancelled = false;
     let delay = 1000;
     let retryTimer = 0;
@@ -226,8 +324,21 @@ export function useControlSession(
     const onTelemetry = ({ payload }: { payload: unknown }) => {
       const n = normalizeTelemetry(payload);
       if (!n) return;
+      const received = Date.now();
+      const prev = lastArriveRef.current;
+      lastArriveRef.current = received;
+      if (prev > 0) {
+        lagRef.current = nextLagMs(lagRef.current, Math.max(0, received - prev));
+        setLagMs(lagRef.current);
+        const slow = preferBoardMode(lagRef.current, slowRef.current);
+        if (slow !== slowRef.current) {
+          slowRef.current = slow;
+          setSlowLink(slow);
+        }
+      }
       setFrame(n);
-      setLastTelemetryAt(Date.now());
+      setTelemetryReceivedAt(received);
+      setLastTelemetryAt(received);
     };
     const onMap = ({ payload }: { payload: unknown }) => {
       const m = normalizeMap(payload);
@@ -242,7 +353,7 @@ export function useControlSession(
         return next.length > MAX_LOGS ? next.slice(next.length - MAX_LOGS) : next;
       });
     };
-    const onHb = () => setLastTelemetryAt((t) => t ?? Date.now());
+    const onHb = () => setHeartbeatReceivedAt(Date.now());
 
     const noteBeat = (error: { message?: string } | null, data: unknown, event: CmdJoinEvent) => {
       if (cancelled) return;
@@ -288,9 +399,21 @@ export function useControlSession(
       if (access) await client.realtime.setAuth(access);
       if (cancelled) return;
 
-      const watch = (ch: RealtimeChannel) => {
+      const noteLink = (status: string) => {
+        const next = reduceChannelStatus({ subscribedAt: null, channelFailed: false }, status, Date.now());
+        if (status === 'SUBSCRIBED') {
+          setSubscribedAt(next.subscribedAt);
+          setChannelFailed(false);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          setSubscribedAt(null);
+          setChannelFailed(true);
+        }
+      };
+
+      const watch = (ch: RealtimeChannel, link: boolean) => {
         ch.subscribe((status) => {
           if (cancelled) return;
+          if (link) noteLink(status);
           if (status === 'SUBSCRIBED') { delay = 1000; setRealtimeDown(false); return; }
           if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
             setRealtimeDown(true);
@@ -316,12 +439,12 @@ export function useControlSession(
           ackWaiters.current.delete(ack.seq);
           wait(ack);
         });
-        watch(status);
+        watch(status, true);
         const ctl = track(client.channel(topics.ctl, { config: { private: true } }));
         ctl.on('broadcast', { event: 'control' }, () => {
           void client.rpc('bot_heartbeat', { p_bot: botId }).then(({ data: beat, error }) => noteBeat(error, beat, 'heartbeat'));
         });
-        watch(ctl);
+        watch(ctl, false);
         const notify = track(client.channel(topics.notify, { config: { private: true } }));
         notify.on('broadcast', { event: 'control_lost' }, () => {
           const token = tokenRef.current;
@@ -353,7 +476,7 @@ export function useControlSession(
         notify.on('broadcast', { event: 'control_request' }, () => {
           void client.rpc('bot_heartbeat', { p_bot: botId }).then(({ data: beat, error }) => noteBeat(error, beat, 'heartbeat'));
         });
-        watch(notify);
+        watch(notify, false);
       } else {
         const ch = track(client.channel(publicChannel(botId)));
         publicChRef.current = ch;
@@ -361,7 +484,7 @@ export function useControlSession(
         ch.on('broadcast', { event: 'map' }, onMap);
         ch.on('broadcast', { event: 'log' }, onLog);
         ch.on('broadcast', { event: 'hb' }, onHb);
-        watch(ch);
+        watch(ch, true);
       }
     };
 
@@ -377,6 +500,7 @@ export function useControlSession(
     void subscribe();
     return () => {
       cancelled = true;
+      window.clearTimeout(stamp);
       window.clearTimeout(retryTimer);
       leaveCmd();
       publicChRef.current = null;
@@ -517,6 +641,20 @@ export function useControlSession(
   }, [client, botId, privateControl, pendingRequests, refresh, syncCmd]);
 
   const heartbeatStale = heartbeatAt != null && now - heartbeatAt > 10_000;
+  const link = !client || !userId
+    ? connectingLink()
+    : deriveLinkStatus({
+      now,
+      startedAt,
+      subscribedAt,
+      channelFailed,
+      lastSeenSettled: lastSeen.settled,
+      lastSeenReadable: lastSeen.readable,
+      lastSeenAtMs: lastSeen.at,
+      lastSeenChangedAt: lastSeen.changedAt,
+      heartbeatReceivedAt,
+      telemetryReceivedAt,
+    });
 
   return {
     privateControl,
@@ -536,6 +674,9 @@ export function useControlSession(
     map,
     logs,
     lastTelemetryAt,
+    link,
+    lagMs,
+    slowLink,
     names,
     pushLog,
     sendCommand,
