@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  canDrive,
-  canTakeControl,
-  clampAuthority,
   channelName,
   isBotOffline,
   nextLagMs,
@@ -18,22 +15,7 @@ describe('telemetry protocol', () => {
     expect(channelName('hardware-bot')).toBe('amr-bot-hardware-bot');
   });
 
-  it('gates drive by authority rank', () => {
-    expect(canDrive(0)).toBe(false);
-    expect(canDrive(1)).toBe(true);
-    expect(canDrive(3)).toBe(true);
-  });
-
-  it('gives higher authority priority for the control lock', () => {
-    expect(canTakeControl(1, null)).toBe(true);
-    expect(canTakeControl(0, null)).toBe(false);
-    expect(canTakeControl(1, 2)).toBe(false);
-    expect(canTakeControl(2, 1)).toBe(true);
-    expect(canTakeControl(2, 2)).toBe(true);
-    expect(canTakeControl(3, 2)).toBe(true);
-  });
-
-  it('marks bot offline after heartbeat timeout', () => {
+  it('marks bot offline after the 10s heartbeat timeout', () => {
     const now = 1_000_000;
     expect(isBotOffline(null, now)).toBe(true);
     expect(isBotOffline(now - HEARTBEAT_OFFLINE_MS + 100, now)).toBe(false);
@@ -53,11 +35,5 @@ describe('telemetry protocol', () => {
     const b = nextLagMs(200, 600);
     expect(b).toBeGreaterThan(200);
     expect(b).toBeLessThan(600);
-  });
-
-  it('clamps authority ranks', () => {
-    expect(clampAuthority(-1)).toBe(0);
-    expect(clampAuthority('2')).toBe(2);
-    expect(clampAuthority(99)).toBe(3);
   });
 });

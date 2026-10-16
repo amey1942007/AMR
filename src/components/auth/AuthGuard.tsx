@@ -19,7 +19,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
         const path = base && window.location.pathname.startsWith(base) ? window.location.pathname.slice(base.length) || '/' : window.location.pathname;
         const next = encodeURIComponent(path + window.location.search);
         (document as unknown as { activeViewTransition?: { skipTransition(): void } }).activeViewTransition?.skipTransition();
-        window.location.replace(asset(`/login/?next=${next}`));
+        window.location.replace(asset(`/sign-in/?next=${next}`));
         return;
       }
       setOk(true); setReady(true);

@@ -6,12 +6,12 @@ import { getAuthClient } from '../supabase-client';
 export interface SupabaseAuthLike {
   signInWithPassword(c: { email: string; password: string }): Promise<{ data: unknown; error: unknown }>;
   signOut(): Promise<unknown>;
-  getSession(): Promise<{ data: { session: { user?: { email?: string }; expires_at?: number } | null } }>;
-  onAuthStateChange(cb: (event: string, s: { user?: { email?: string }; expires_at?: number } | null) => void): { data: { subscription: { unsubscribe(): void } } };
+  getSession(): Promise<{ data: { session: { user?: { id?: string; email?: string }; expires_at?: number } | null } }>;
+  onAuthStateChange(cb: (event: string, s: { user?: { id?: string; email?: string }; expires_at?: number } | null) => void): { data: { subscription: { unsubscribe(): void } } };
 }
 
-const toSession = (s: { user?: { email?: string }; expires_at?: number } | null): Session | null =>
-  s ? { email: s.user?.email, expiresAt: s.expires_at ? s.expires_at * 1000 : undefined } : null;
+const toSession = (s: { user?: { id?: string; email?: string }; expires_at?: number } | null): Session | null =>
+  s ? { email: s.user?.email, userId: s.user?.id, expiresAt: s.expires_at ? s.expires_at * 1000 : undefined } : null;
 
 /**
  * Error mapping (login-spec §1.6, §1.8). Every wrong-credential case, INCLUDING "Email not confirmed" (which would
@@ -27,6 +27,7 @@ export function mapAuthError(err: unknown): AuthResult {
     return Number.isFinite(ra) && ra > 0 ? { status: 'rate_limited', retryAfterSec: Math.ceil(ra) } : { status: 'rate_limited' };
   }
   if (e.status && e.status >= 500) return { status: 'network' };
+  if (e.status === 403 || e.code === 'user_banned' || /allowlist/i.test(e.message ?? '')) return { status: 'forbidden' };
   // 400 invalid_credentials, email_not_confirmed / "Email not confirmed", user_not_found, anything else: generic.
   return { status: 'invalid' };
 }

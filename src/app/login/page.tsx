@@ -1,11 +1,13 @@
 import type { Metadata } from 'next';
-import { LoginPage } from '@/components/auth/LoginPage';
+import { SignInPage } from '@/components/auth/SignInPage';
 
 export const metadata: Metadata = {
-  title: 'Sign in | AMR Control panel',
+  title: 'Sign in | AMR',
   robots: { index: false, follow: false },
   alternates: { canonical: '/login/' },
 };
+
+/** Old path. Same email sign-in as /sign-in. */
 export default function Page() {
-  return <LoginPage />;
+  return <SignInPage />;
 }

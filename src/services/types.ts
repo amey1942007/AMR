@@ -55,8 +55,8 @@ export interface MapDataService {
 }
 
 /** login-spec §1.6. Provider errors are mapped inside adapters; the UI only ever sees these statuses. */
-export type AuthResult = { status: 'ok' } | { status: 'invalid' } | { status: 'rate_limited'; retryAfterSec?: number } | { status: 'network' } | { status: 'unavailable' };
-export interface Session { email?: string; expiresAt?: number }
+export type AuthResult = { status: 'ok' } | { status: 'invalid' } | { status: 'forbidden' } | { status: 'rate_limited'; retryAfterSec?: number } | { status: 'network' } | { status: 'unavailable' };
+export interface Session { email?: string; userId?: string; expiresAt?: number }
 export type Unsubscribe = () => void;
 export interface AuthService {
   readonly name: string;

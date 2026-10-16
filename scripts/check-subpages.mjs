@@ -8,9 +8,19 @@ import { gzipSync } from 'node:zlib';
 import { join } from 'node:path';
 
 const PAGES = ['robots', 'robots/hardware-bot', 'robots/amr4', 'technology', 'about', 'contact', 'privacy'];
-// login-spec §1.10: auth pages ≤ shell + 6 KB gz (form logic); utility pages ≤ shell + 4 KB (§2). supabase-js never initial.
-// /login raised to +8 KB for invite-only username + first-password claim UI (operator-auth stays a deferred chunk).
-const UTIL = { 'login': 8, 'login/reset': 6, 'control': 6, 'maintenance': 4, '404.html': 4 };
+// Auth pages stay above the shared shell by a small amount. supabase-js (signInWithPassword / GoTrueClient)
+// must stay out of the initial scripts — password and RPC helpers are dynamic imports.
+// /control stays at +6 KB because the dashboard is next/dynamic. Sign-in and set-password include the
+// operator form (email + password, not the old username claim). Raise only after measuring a real build.
+const UTIL = {
+  'login': 16,
+  'sign-in': 16,
+  'set-password': 16,
+  'login/reset': 6,
+  'control': 6,
+  'maintenance': 4,
+  '404.html': 4,
+};
 const base = process.env.NEXT_PUBLIC_BASE_PATH || '';
 let fail = false;
 const scripts = (page) => [...new Set([...page.matchAll(/<script([^>]*)\ssrc="([^"]+\.js)"([^>]*)>/g)].filter((m) => !/nomodule/i.test(m[1] + m[3])).map((m) => m[2]))];

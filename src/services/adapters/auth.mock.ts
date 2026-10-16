@@ -6,8 +6,8 @@ export const MOCK_USERNAME = 'demo';
 const MOCK_PASSWORD = 'demo-password';
 
 /**
- * login-spec §1.6 mock: username `demo` → demo@amrslam.tech / demo-password → ok after 600 ms; anything else → invalid.
- * `?mock=locked` → rate_limited 300 s, `?mock=network` → network, `?mock=slow` → 4 s. Session lives in memory only
+ * Dev-only mock: demo@amrslam.tech / demo-password → ok after 600 ms; anything else → invalid.
+ * `?mock=locked` → rate_limited, `?mock=network` → network, `?mock=slow` → 4 s. Session lives in memory only
  * (nothing is written to storage, so a reload signs you out).
  */
 export function createMockAuth(opts: { mode?: () => string | null; delay?: (ms: number) => Promise<void> } = {}): AuthService {
@@ -25,7 +25,7 @@ export function createMockAuth(opts: { mode?: () => string | null; delay?: (ms: 
       if (m === 'locked') return { status: 'rate_limited', retryAfterSec: 300 };
       if (m === 'network') return { status: 'network' };
       if (email.trim().toLowerCase() !== MOCK_USER || password !== MOCK_PASSWORD) return { status: 'invalid' };
-      session = { email: MOCK_USER, expiresAt: Date.now() + 3600_000 };
+      session = { email: MOCK_USER, userId: '00000000-0000-4000-8000-0000000000d1', expiresAt: Date.now() + 3600_000 };
       emit();
       return { status: 'ok' };
     },
