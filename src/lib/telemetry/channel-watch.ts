@@ -9,6 +9,30 @@
  */
 
 export const SIDE_CHANNEL_NOTE = 'Private channel unavailable';
+/** Wait past the client’s own recover-after-error (~1s) before tearing a channel down. */
+export const LINK_RETRY_BASE_MS = 2_500;
+
+/**
+ * A public join can report CHANNEL_ERROR and then SUBSCRIBED on its own.
+ * Arming a retry on the error and leaving it armed destroys that recovery.
+ * SUBSCRIBED cancels the timer. A later real failure may arm it again.
+ */
+export function linkRetryAction(status: string): 'arm' | 'cancel' | 'none' {
+  if (status === 'SUBSCRIBED') return 'cancel';
+  if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') return 'arm';
+  return 'none';
+}
+
+/** Short status line for the Error sign. Tokens are redacted. */
+export function formatChannelDetail(status: string, err?: { message?: string } | null): string {
+  const message = (err?.message ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/eyJ[A-Za-z0-9._-]+/g, '[jwt]')
+    .replace(/sb_(?:publishable|secret)_[A-Za-z0-9_-]+/g, '[key]');
+  const short = message.length > 72 ? `${message.slice(0, 69)}…` : message;
+  return short ? `${status}: ${short}` : status;
+}
 
 const DOWN = new Set(['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED']);
 

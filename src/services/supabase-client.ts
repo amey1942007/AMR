@@ -5,7 +5,31 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * (localStorage, storageKey 'amr-auth'), so it is a separate instance from the contact client (persistSession:false).
  * supabase-js is dynamically imported: it never lands in the initial bundle.
  */
+/**
+ * Auth options for the public `amr-bot-*` socket.
+ * No persisted session, so Realtime never receives the operator JWT.
+ * A signed-in token on that public topic is rejected (`JwtSignatureError` /
+ * authorization) and the page then tears the channel down.
+ */
+export const BROADCAST_AUTH = {
+  persistSession: false,
+  autoRefreshToken: false,
+  detectSessionInUrl: false,
+} as const;
+
 let authClient: Promise<SupabaseClient> | null = null;
+let broadcastClient: Promise<SupabaseClient> | null = null;
+
+/** Session-less client used only for public broadcast topics. */
+export function getBroadcastClient(url: string, key: string, timeoutMs = 10_000): Promise<SupabaseClient> {
+  return (broadcastClient ??= import('@supabase/supabase-js').then(({ createClient }) =>
+    createClient(url, key, {
+      auth: BROADCAST_AUTH,
+      global: { fetch: (input, init) => fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(timeoutMs) }) },
+    }),
+  ));
+}
+
 export function getAuthClient(url: string, key: string, timeoutMs = 10_000): Promise<SupabaseClient> {
   return (authClient ??= import('@supabase/supabase-js').then(({ createClient }) =>
     createClient(url, key, {

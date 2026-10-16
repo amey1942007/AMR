@@ -45,6 +45,8 @@ export interface StatusSignFacts {
   commandError: string | null;
   /** A telemetry broadcast arrived and could not be read. */
   telemetryUnreadable: boolean;
+  /** Last link-channel status, plus the subscribe error message when there is one. */
+  channelDetail?: string | null;
 }
 
 export interface StatusSignView {
@@ -105,7 +107,9 @@ export function statusErrorReason(facts: StatusSignFacts): string | null {
   // CHANNEL_ERROR / CLOSED, or a ctl/notify failure, must not say the status
   // channel is down while telemetry or hb is still arriving.
   if ((facts.channelFailed || facts.realtimeDown) && (up || sessionHeartbeatOk(facts))) {
-    if (!telemetryFresh(facts) && !bridgeFresh(facts)) return 'Status channel error';
+    if (!telemetryFresh(facts) && !bridgeFresh(facts)) {
+      return facts.channelDetail ? `Status channel error: ${facts.channelDetail}` : 'Status channel error';
+    }
   }
   if (
     sessionHeartbeatOk(facts)

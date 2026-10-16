@@ -23,7 +23,10 @@ import {
 import {
   authEventRefreshesRealtime,
   emptyChannelMembership,
+  formatChannelDetail,
   interpretChannelStatus,
+  LINK_RETRY_BASE_MS,
+  linkRetryAction,
   openChannel,
   retireChannels,
 } from './channel-watch';
@@ -94,6 +97,8 @@ export function useControlSession(
   client: SupabaseClient | null,
   userId: string | null,
   botId: BotId,
+  /** Public `amr-bot-*` socket. Must not be the signed-in auth client. */
+  broadcastClient: SupabaseClient | null = null,
 ): ControlSession {
   const privateControl = privateControlEnabled();
   const [role, setRole] = useState<'controller' | 'viewer' | null>(null);
@@ -120,6 +125,7 @@ export function useControlSession(
   const [lastSeen, setLastSeen] = useState<LastSeenSample>(LAST_SEEN_SAMPLE);
   const [subscribedAt, setSubscribedAt] = useState<number | null>(null);
   const [channelFailed, setChannelFailed] = useState(false);
+  const [channelDetail, setChannelDetail] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState(() => Date.now());
   const [lagMs, setLagMs] = useState(0);
   const [slowLink, setSlowLink] = useState(false);
@@ -155,6 +161,7 @@ export function useControlSession(
     setLastSeen(LAST_SEEN_SAMPLE);
     setSubscribedAt(null);
     setChannelFailed(false);
+    setChannelDetail(null);
     setStartedAt(Number.POSITIVE_INFINITY);
     setLagMs(0);
     setSlowLink(false);
@@ -327,13 +334,14 @@ export function useControlSession(
   }, [client, userId, botId, apply]);
 
   useEffect(() => {
-    if (!client || !userId) return;
+    const socket = privateControl ? client : broadcastClient;
+    if (!client || !userId || !socket) return;
     lagRef.current = 0;
     lastArriveRef.current = 0;
     slowRef.current = false;
     const stamp = window.setTimeout(() => setStartedAt(Date.now()), 0);
     let cancelled = false;
-    let delay = 1000;
+    let delay = LINK_RETRY_BASE_MS;
     let retryTimer = 0;
     let membership = emptyChannelMembership();
     let nextChannelId = 1;
@@ -343,12 +351,16 @@ export function useControlSession(
     const track = (ch: RealtimeChannel) => { channels.push(ch); return ch; };
     const topics = privateListenTopics(botId, userId);
 
-    const { data: authWatch } = client.auth.onAuthStateChange((event, session) => {
-      if (cancelled || !authEventRefreshesRealtime(event)) return;
-      const access = session?.access_token;
-      if (!access) return;
-      void client.realtime.setAuth(access);
-    });
+    let unsubscribeAuth = () => {};
+    if (privateControl) {
+      const { data: authWatch } = client.auth.onAuthStateChange((event, session) => {
+        if (cancelled || !authEventRefreshesRealtime(event)) return;
+        const access = session?.access_token;
+        if (!access) return;
+        void client.realtime.setAuth(access);
+      });
+      unsubscribeAuth = () => authWatch.subscription.unsubscribe();
+    }
 
     const clearSideRetries = () => {
       for (const timer of sideRetry.values()) window.clearTimeout(timer);
@@ -439,37 +451,40 @@ export function useControlSession(
       channelIds.set(ch, id);
       const generation = membership.generation;
       membership = openChannel(membership, id);
-      ch.subscribe((status) => {
+      ch.subscribe((status, err) => {
         if (cancelled) return;
         const effect = interpretChannelStatus(membership, { id, generation, carriesLink: link, status });
         if (effect.ignore) return;
-        if (link && status === 'SUBSCRIBED') {
-          delay = 1000;
-          setSubscribedAt(Date.now());
-          setChannelFailed(false);
-          setRealtimeDown(false);
-        } else if (effect.channelFailed) {
-          setSubscribedAt(null);
-          setChannelFailed(true);
-          setRealtimeDown(true);
+        if (link) {
+          const retry = linkRetryAction(status);
+          if (retry === 'cancel') {
+            window.clearTimeout(retryTimer);
+            delay = LINK_RETRY_BASE_MS;
+            setSubscribedAt(Date.now());
+            setChannelFailed(false);
+            setRealtimeDown(false);
+            setChannelDetail(null);
+          } else if (retry === 'arm' && effect.resubscribe) {
+            setSubscribedAt(null);
+            setChannelFailed(true);
+            setRealtimeDown(true);
+            setChannelDetail(formatChannelDetail(status, err));
+            window.clearTimeout(retryTimer);
+            retryTimer = window.setTimeout(() => { if (!cancelled) void resubscribe(); }, delay);
+            delay = Math.min(15_000, delay * 2);
+          }
         } else if (status === 'SUBSCRIBED') {
-          delay = 1000;
+          delay = LINK_RETRY_BASE_MS;
         }
         if (effect.note !== undefined) setChannelNote(effect.note);
-        if (effect.resubscribe) {
-          window.clearTimeout(retryTimer);
-          retryTimer = window.setTimeout(() => { if (!cancelled) void resubscribe(); }, delay);
-          delay = Math.min(15_000, delay * 2);
-          return;
-        }
         if (effect.note) onSideDown?.();
       });
     };
 
     const openListen = (item: { topic: string; private: boolean; carriesLink: boolean }) => {
       const ch = item.private
-        ? track(client.channel(item.topic, { config: { private: true } }))
-        : track(client.channel(item.topic));
+        ? track(socket.channel(item.topic, { config: { private: true } }))
+        : track(socket.channel(item.topic));
       if (item.carriesLink) {
         if (!item.private) publicChRef.current = ch;
         ch.on('broadcast', { event: 'telemetry' }, onTelemetry);
@@ -541,9 +556,11 @@ export function useControlSession(
     };
 
     const subscribe = async () => {
-      const { data } = await client.auth.getSession();
-      const access = data.session?.access_token;
-      if (access) await client.realtime.setAuth(access);
+      if (privateControl) {
+        const { data } = await client.auth.getSession();
+        const access = data.session?.access_token;
+        if (access) await client.realtime.setAuth(access);
+      }
       if (cancelled) return;
       const plan = controlListenPlan(botId, userId, privateControl ? '1' : '');
       for (const item of plan) openListen(item);
@@ -557,7 +574,7 @@ export function useControlSession(
         if (id != null) ids.push(id);
       }
       membership = retireChannels(membership, ids);
-      for (const ch of channels) void client.removeChannel(ch);
+      for (const ch of channels) void socket.removeChannel(ch);
       channels.length = 0;
       publicChRef.current = null;
       leaveCmd();
@@ -571,7 +588,7 @@ export function useControlSession(
       window.clearTimeout(stamp);
       window.clearTimeout(retryTimer);
       clearSideRetries();
-      authWatch.subscription.unsubscribe();
+      unsubscribeAuth();
       const ids: number[] = [];
       for (const ch of channels) {
         const id = channelIds.get(ch);
@@ -580,9 +597,9 @@ export function useControlSession(
       membership = retireChannels(membership, ids);
       leaveCmd();
       publicChRef.current = null;
-      for (const ch of channels) void client.removeChannel(ch);
+      for (const ch of channels) void socket.removeChannel(ch);
     };
-  }, [client, userId, botId, privateControl, apply, syncCmd]);
+  }, [client, broadcastClient, userId, botId, privateControl, apply, syncCmd]);
 
   const refresh = useCallback(async () => {
     if (!client) return;
@@ -742,6 +759,7 @@ export function useControlSession(
     startedAt,
     subscribedAt,
     channelFailed,
+    channelDetail,
     realtimeDown,
     unreadable: link.unreadable,
     sessionHeartbeatAt: heartbeatAt,
