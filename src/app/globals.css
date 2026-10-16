@@ -57,13 +57,37 @@ body { -webkit-font-smoothing: antialiased; font-size: var(--text-body); line-he
 [data-open='true'] > .dlg-backdrop { opacity: 1; }
 .drawer-panel { transform: translateX(100%); transition: transform var(--dur-theme) var(--ease-io); }
 [data-open='true'] > .drawer-panel { transform: none; transition-duration: var(--dur-drawer); transition-timing-function: var(--ease-expo); }
-.menu-panel { opacity: 0; transition: opacity var(--dur-theme) var(--ease-io); }
+.menu-panel {
+  --menu-stagger: 60ms;
+  --menu-exit: calc(var(--dur-menu) + (var(--menu-count, 6) - 1) * var(--menu-stagger));
+  opacity: 0;
+  transition: opacity var(--dur-theme) var(--ease-io);
+}
 .menu-panel[data-open='true'] { opacity: 1; }
-.menu-line { display: block; transform: translateY(100%); }
+/* Exit lives on the resting rule so removing data-open reverses the slide (open-only transitions snap shut). */
+.menu-line {
+  display: block;
+  transform: translateY(100%);
+  transition: transform var(--dur-menu) var(--ease-expo);
+  transition-delay: calc((var(--menu-count, 6) - 1 - var(--i, 0)) * var(--menu-stagger, 60ms));
+}
 .menu-panel[data-open='true'] .menu-line {
   transform: none;
   transition: transform var(--dur-menu) var(--ease-expo);
-  transition-delay: calc(var(--i, 0) * 60ms);
+  transition-delay: calc(var(--i, 0) * var(--menu-stagger, 60ms));
+}
+/* .dlg-root[inert] replaces `transition` and hides after 300ms, which clips this exit. Stay visible until unmount. */
+.dlg-root.menu-panel[data-closing='true'] {
+  visibility: visible;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--menu-exit) var(--ease-io), visibility 0s linear 0s;
+}
+.menu-burger-bar {
+  transition:
+    transform var(--dur-theme) var(--ease-io),
+    translate var(--dur-theme) var(--ease-io),
+    rotate var(--dur-theme) var(--ease-io);
 }
 .toast { opacity: 0; transform: translate(-50%, 16px); transition: opacity var(--dur-toast) var(--ease-out), transform var(--dur-toast) var(--ease-out); }
 .toast[data-show='true'] { opacity: 1; transform: translate(-50%, 0); }
@@ -92,6 +116,8 @@ body { -webkit-font-smoothing: antialiased; font-size: var(--text-body); line-he
   .drawer-panel, [data-open='true'] > .drawer-panel { transform: none; opacity: 0; transition: opacity var(--dur-rm) linear; }
   [data-open='true'] > .drawer-panel { opacity: 1; }
   .menu-line, .menu-panel[data-open='true'] .menu-line { transform: none; transition: none; }
+  .dlg-root.menu-panel[data-closing='true'] { transition: none; visibility: hidden; opacity: 0; }
+  .menu-burger-bar { transition: none; }
   .toast, .toast[data-show='true'] { transform: translate(-50%, 0); transition: opacity var(--dur-rm) linear; }
   .pill:active:not(:disabled) { transform: none; }
   .pill-arrow, .menu-link, .logo-dot { transition: none; transform: none !important; }

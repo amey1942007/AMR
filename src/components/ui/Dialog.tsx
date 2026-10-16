@@ -1,9 +1,29 @@
 'use client';
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { getLenis } from '@/lib/lenis-ref';
 
 const FOCUSABLE =
   'a[href],button:not([disabled]),input:not([disabled]):not([tabindex="-1"]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+/** Shared so an exit (`closing`) can keep the lock after `open` drops without clobbering another dialog's restore. */
+let scrollLocks = 0;
+let savedOverflow = '';
+function lockPageScroll() {
+  if (scrollLocks === 0) {
+    savedOverflow = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    getLenis()?.stop();
+  }
+  scrollLocks += 1;
+}
+function unlockPageScroll() {
+  if (scrollLocks === 0) return;
+  scrollLocks -= 1;
+  if (scrollLocks === 0) {
+    document.documentElement.style.overflow = savedOverflow;
+    getLenis()?.start();
+  }
+}
 
 /** Background regions made inert while any dialog is open (ui-spec §6.4). */
 const BACKGROUND_IDS = ['site-header', 'main'];
@@ -18,6 +38,9 @@ interface DialogProps {
   initialFocus?: () => HTMLElement | null;
   /** Element to focus after close (the opener). */
   returnFocus?: () => HTMLElement | null;
+  /** Exit transition in progress. Keeps the root paintable; `open` is already false (inert, focus returned). */
+  closing?: boolean;
+  style?: CSSProperties;
   children: ReactNode;
 }
 
@@ -25,7 +48,7 @@ interface DialogProps {
  * Shared modal primitive: role=dialog, aria-modal, focus trap (wraps), Esc closes, background inert,
  * scroll lock, focus return. Stays mounted so CSS exit transitions can run; inert + hidden when closed.
  */
-export function Dialog({ open, onClose, labelledBy, id, className, initialFocus, returnFocus, children }: DialogProps) {
+export function Dialog({ open, onClose, labelledBy, id, className, initialFocus, returnFocus, closing = false, style, children }: DialogProps) {
   const ref = useRef<HTMLDivElement>(null);
   // `shown` flips one frame after `open` so CSS enter transitions run even when mounted already open (lazy dialogs).
   const [shown, setShown] = useState(false);
@@ -41,13 +64,13 @@ export function Dialog({ open, onClose, labelledBy, id, className, initialFocus,
   // Layout effect: the Escape/Tab handlers and inert background must exist in the same commit that makes the dialog
   // interactive. As a passive effect it could lag a slow (WebGL-heavy) frame, so an early Escape was lost.
   useLayoutEffect(() => {
-    if (!open) return;
+    // Hold the scroll lock through the exit so the scrollbar doesn't pop in under the animation.
+    if (!open && !closing) return;
+    lockPageScroll();
+    if (!open) return () => unlockPageScroll();
     const root = ref.current!;
     const bg = BACKGROUND_IDS.map((i) => document.getElementById(i)).filter(Boolean) as HTMLElement[];
     bg.forEach((el) => el.setAttribute('inert', ''));
-    const prevOverflow = document.documentElement.style.overflow;
-    document.documentElement.style.overflow = 'hidden';
-    getLenis()?.stop();
     // initialFocus may target lazily loaded content (the form): retry briefly before falling back.
     let tries = 0;
     const focusIn = () => {
@@ -78,8 +101,7 @@ export function Dialog({ open, onClose, labelledBy, id, className, initialFocus,
       window.clearTimeout(t);
       document.removeEventListener('keydown', onKey);
       bg.forEach((el) => el.removeAttribute('inert'));
-      document.documentElement.style.overflow = prevOverflow;
-      getLenis()?.start();
+      unlockPageScroll();
       // Defer so a dialog opened by this close (Menu → Contact) can claim focus first.
       window.setTimeout(() => {
         // Ignore this dialog itself: on a slow frame its inert attribute may not be committed yet, which used to skip
@@ -89,7 +111,7 @@ export function Dialog({ open, onClose, labelledBy, id, className, initialFocus,
       }, 0);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, closing]);
 
   return (
     <div
@@ -99,10 +121,11 @@ export function Dialog({ open, onClose, labelledBy, id, className, initialFocus,
       aria-modal="true"
       aria-labelledby={labelledBy}
       data-open={open && shown}
+      data-closing={closing ? 'true' : undefined}
       inert={!open}
       aria-hidden={!open}
       className={`dlg-root ${className ?? ''}`}
-      style={{ zIndex: 'var(--z-dialog)' as unknown as number }}
+      style={{ ...style, zIndex: 'var(--z-dialog)' as unknown as number }}
     >
       {children}
     </div>

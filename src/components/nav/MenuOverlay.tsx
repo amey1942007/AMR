@@ -1,24 +1,93 @@
 'use client';
 import Link from '@/components/nav/AppLink';
 import { usePathname } from 'next/navigation';
+import { useLayoutEffect, useState } from 'react';
 import { Dialog } from '@/components/ui/Dialog';
 import { Logo } from './Logo';
 import { MenuButton } from './MenuButton';
 import { ControlPanelLink } from './ControlPanelLink';
 import { navItems, EMAIL, REPO_URL } from '@/lib/content';
 import { useUI, uiRefs } from '@/lib/ui-store';
+import {
+  menuExitDurationMs,
+  menuPhaseForOpen,
+  MENU_EXIT_FALLBACK_PAD_MS,
+  shouldSettleMenuExit,
+  transitionEndMs,
+} from './menu-motion';
 
 const linkCls =
   'menu-link inline-flex items-center gap-3 font-display font-bold tracking-[-0.03em] leading-none text-[length:var(--text-menu)] min-h-11';
+
+function prefersReducedMotion() {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
 
 export function MenuOverlay() {
   const open = useUI((s) => s.dialog === 'menu');
   const closeDialog = useUI((s) => s.closeDialog);
   const openDialog = useUI((s) => s.openDialog);
   const pathname = usePathname();
+  // False while an exit is still on screen. Reset on the next open so a later close can animate.
+  const [settledClosed, setSettledClosed] = useState(false);
+  const phase = menuPhaseForOpen(settledClosed ? 'closed' : 'closing', open, prefersReducedMotion());
+
+  useLayoutEffect(() => {
+    if (open) {
+      setSettledClosed(false);
+      return;
+    }
+    if (settledClosed || phase !== 'closing') {
+      if (!settledClosed) setSettledClosed(true);
+      return;
+    }
+    const root = document.getElementById('menu-overlay');
+    const finish = () => setSettledClosed(true);
+    if (!root) {
+      finish();
+      return;
+    }
+    const lineEnds = Array.from(root.querySelectorAll<HTMLElement>('.menu-line')).map((el) =>
+      transitionEndMs(getComputedStyle(el), 'transform'),
+    );
+    const measured = Math.max(transitionEndMs(getComputedStyle(root), 'opacity'), ...lineEnds, 0);
+    // Never settle before the designed exit. A short computed read (styles not flushed) must not clip it.
+    const expected = Math.max(measured, menuExitDurationMs(navItems.length));
+    const started = performance.now();
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      finish();
+    };
+    const onEnd = (event: Event) => {
+      const el = event.target;
+      if (!(el instanceof Element)) return;
+      const onPanel = el === root;
+      const onLine = el.classList.contains('menu-line');
+      if (!onPanel && !onLine) return;
+      if (event.type === 'transitionend') {
+        const name = (event as TransitionEvent).propertyName;
+        if (onPanel && name !== 'opacity') return;
+        if (onLine && name !== 'transform') return;
+      }
+      if (!shouldSettleMenuExit(performance.now() - started, expected)) return;
+      settle();
+    };
+    root.addEventListener('transitionend', onEnd);
+    root.addEventListener('animationend', onEnd);
+    const timer = window.setTimeout(settle, expected + MENU_EXIT_FALLBACK_PAD_MS);
+    return () => {
+      root.removeEventListener('transitionend', onEnd);
+      root.removeEventListener('animationend', onEnd);
+      window.clearTimeout(timer);
+    };
+  }, [open, phase, settledClosed]);
+
+  if (phase === 'closed') return null;
 
   return (
-    <Dialog id="menu-overlay" open={open} onClose={closeDialog} labelledBy="menu-title" returnFocus={() => uiRefs.menuButton} initialFocus={() => document.querySelector<HTMLElement>('#menu-overlay nav a, #menu-overlay nav button')} className="menu-panel text-white">
+    <Dialog id="menu-overlay" open={open} closing={phase === 'closing'} onClose={closeDialog} labelledBy="menu-title" returnFocus={() => uiRefs.menuButton} initialFocus={() => document.querySelector<HTMLElement>('#menu-overlay nav a, #menu-overlay nav button')} className="menu-panel text-white" style={{ ['--menu-count' as string]: String(navItems.length) }}>
       <div className="absolute inset-0" style={{ background: 'var(--overlay)', backdropFilter: 'blur(16px)' }} />
       <div className="relative flex h-full flex-col">
         {/* Mirror of the top bar so the close control sits at the identical position (ui-spec §3.1). */}
