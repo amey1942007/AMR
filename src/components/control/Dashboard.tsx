@@ -8,6 +8,7 @@ import { asset } from '@/lib/asset';
 import { getAuthClient } from '@/services/supabase-client';
 import { BOTS, type BotId, type ControlCommand } from '@/lib/telemetry/protocol';
 import { offlineMessage, type LinkPhase } from '@/lib/telemetry/link-status';
+import { SIGN_DOWN, SIGN_ERROR, SIGN_NO_DATA, type StatusSignId } from '@/lib/telemetry/status-signs';
 import { useControlSession } from '@/lib/telemetry/useControlSession';
 import { clampLinAng, clampToolParams, commandRejectText, estopLatchAllowed, mapNameError, JOY_HZ, NUDGE_REPEAT_MS, ESTOP_RETRY_MS } from '@/lib/telemetry/commands';
 import { COPY, countdownFraction, formatCountdown, initialOf, secondsRemaining } from '@/lib/control/access';
@@ -368,6 +369,14 @@ export function Dashboard() {
         </div>
       </header>
       {controller && estop === 'latched' && <div className="op-estop-bar" role="status">EMERGENCY STOP ACTIVE</div>}
+      <div className="op-signs">
+        <Sign id="nodata" on={tel.signs.active === 'nodata'} label={SIGN_NO_DATA} />
+        <Sign id="down" on={tel.signs.active === 'down'} label={SIGN_DOWN} />
+        <Sign id="error" on={tel.signs.active === 'error'} label={SIGN_ERROR} detail={tel.signs.errorReason} />
+        <span className="op-telem mono" aria-label="Telemetry">
+          x {fmt(tel.frame?.pose?.[0], 2)} · y {fmt(tel.frame?.pose?.[1], 2)} · yaw {tel.frame?.pose ? (tel.frame.pose[2] * 57.2958).toFixed(1) : '–'}° · v {fmt(tel.frame?.vel[0], 2)} m/s
+        </span>
+      </div>
       </div>
 
       {controller && requests.length > 0 && (
@@ -787,6 +796,26 @@ function CameraCard({ frame, phase, lastAt, now }: { frame: NormState | null; ph
         <p className="muted">{copy}</p>
       )}
     </section>
+  );
+}
+
+function Sign({ id, on, label, detail }: { id: StatusSignId; on: boolean; label: string; detail?: string | null }) {
+  return (
+    <span className={`op-sign sign-${id}`} data-on={on ? 'true' : 'false'} aria-current={on ? 'true' : undefined}>
+      <SignMark id={id} />
+      <span>{label}</span>
+      {on && detail && <span className="reason">{detail}</span>}
+    </span>
+  );
+}
+
+function SignMark({ id }: { id: StatusSignId }) {
+  if (id === 'nodata') return <span className="sign-half" aria-hidden />;
+  if (id === 'down') return <span className="sign-hollow" aria-hidden />;
+  return (
+    <svg className="sign-x" viewBox="0 0 12 12" aria-hidden>
+      <path d="M2 2 L10 10 M10 2 L2 10" fill="none" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
   );
 }
 

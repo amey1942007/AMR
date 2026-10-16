@@ -34,6 +34,7 @@ import {
 } from './link-status';
 import { nextLagMs, preferBoardMode, type BotId, type ConsoleLogLine, type ControlCommand, type MapFrame } from './protocol';
 import { normalizeMap, normalizeTelemetry, type NormState } from './normalize';
+import { deriveStatusSigns, shortCommandReason, type StatusSignView } from './status-signs';
 import {
   parseHeartbeat,
   respondFailure,
@@ -70,6 +71,8 @@ export interface ControlSession {
   lagMs: number;
   /** True after lag crosses the fallback threshold, until it recovers. */
   slowLink: boolean;
+  /** Connected / not connected / error. The error sign carries a short reason. */
+  signs: StatusSignView;
   names: Record<string, string>;
   pushLog: (level: string, text: string) => void;
   sendCommand: (cmd: ControlCommand) => Promise<CommandResult>;
@@ -112,6 +115,8 @@ export function useControlSession(
   const [startedAt, setStartedAt] = useState(() => Date.now());
   const [lagMs, setLagMs] = useState(0);
   const [slowLink, setSlowLink] = useState(false);
+  const [commandError, setCommandError] = useState<string | null>(null);
+  const [telemetryUnreadable, setTelemetryUnreadable] = useState(false);
   const [names, setNames] = useState<Record<string, string>>({});
 
   const tokenRef = useRef<string | null>(null);
@@ -145,6 +150,8 @@ export function useControlSession(
     setLagMs(0);
     setSlowLink(false);
     setRealtimeDown(false);
+    setCommandError(null);
+    setTelemetryUnreadable(false);
   }
 
   const syncCmd = useCallback((event: CmdJoinEvent, role: 'controller' | 'viewer' | null) => {
@@ -323,7 +330,14 @@ export function useControlSession(
 
     const onTelemetry = ({ payload }: { payload: unknown }) => {
       const n = normalizeTelemetry(payload);
-      if (!n) return;
+      if (!n) {
+        if (payload && typeof payload === 'object') {
+          const kind = (payload as { t?: unknown }).t;
+          if (kind !== 'map' && kind !== 'log' && kind !== 'hb') setTelemetryUnreadable(true);
+        }
+        return;
+      }
+      setTelemetryUnreadable(false);
       const received = Date.now();
       const prev = lastArriveRef.current;
       lastArriveRef.current = received;
@@ -525,11 +539,16 @@ export function useControlSession(
   }, [client, botId]);
 
   const sendCommand = useCallback(async (cmd: ControlCommand): Promise<CommandResult> => {
-    if (roleRef.current !== 'controller') return { ok: false, error: 'viewer' };
+    const note = (result: CommandResult): CommandResult => {
+      if (result.ok) setCommandError(null);
+      else if (result.error !== 'viewer') setCommandError(shortCommandReason(result.error));
+      return result;
+    };
+    if (roleRef.current !== 'controller') return note({ ok: false, error: 'viewer' });
     const epochNow = epochRef.current;
     const token = tokenRef.current;
     let seq = 0;
-    try { seq = seqRef.current.next(epochNow); } catch { return { ok: false, error: 'epoch' }; }
+    try { seq = seqRef.current.next(epochNow); } catch { return note({ ok: false, error: 'epoch' }); }
     const ts = alignedNow(Date.now(), offsetRef.current);
     const armAck = () => {
       let timer = 0;
@@ -553,9 +572,9 @@ export function useControlSession(
       const route = privateCommandRoute(cmd.type, subscribed);
       if (route === 'estop-rpc') {
         await rpcCommand({ type: 'estop' }, epochNow, seq);
-        return estopRpcFallback();
+        return note(estopRpcFallback());
       }
-      if (route === 'blocked') return { ok: false, error: token ? 'no-channel' : 'no-token' };
+      if (route === 'blocked') return note({ ok: false, error: token ? 'no-channel' : 'no-token' });
       const armed = armAck();
       const res = await ch!.send({
         type: 'broadcast',
@@ -566,22 +585,22 @@ export function useControlSession(
       if (res !== 'ok') {
         armed.cancel();
         const failed = estopRpcFallback();
-        return cmd.type === 'estop' ? failed : { ok: false, error: 'send', via: 'timeout' };
+        return note(cmd.type === 'estop' ? failed : { ok: false, error: 'send', via: 'timeout' });
       }
       const delivered = commandDelivery(await armed.promise, cmd.type === 'estop' ? 'estop' : 'other');
       if (!delivered.ok && delivered.via === 'ack' && (cmd.type === 'joy' || cmd.type === 'nudge') && delivered.error) {
         pushLog('error', delivered.error);
       }
-      return delivered;
+      return note(delivered);
     }
     const ch = publicChRef.current;
-    if (!ch) return { ok: false, error: 'no-channel' };
+    if (!ch) return note({ ok: false, error: 'no-channel' });
     const res = await ch.send({
       type: 'broadcast',
       event: 'command',
       payload: publicCommandEnvelope(botId, cmd, { id: crypto.randomUUID(), epoch: epochNow, seq, ts }),
     });
-    return { ok: res === 'ok', via: 'broadcast', error: res === 'ok' ? undefined : 'send' };
+    return note({ ok: res === 'ok', via: 'broadcast', error: res === 'ok' ? undefined : 'send' });
   }, [privateControl, rpcCommand, botId, pushLog]);
 
   const requestControl = useCallback(async () => {
@@ -655,6 +674,23 @@ export function useControlSession(
       heartbeatReceivedAt,
       telemetryReceivedAt,
     });
+  const signs = deriveStatusSigns({
+    now,
+    phase: link.phase,
+    startedAt,
+    subscribedAt,
+    channelFailed,
+    realtimeDown,
+    unreadable: link.unreadable,
+    sessionHeartbeatAt: heartbeatAt,
+    sessionHeartbeatError: heartbeatError,
+    bridgeHeartbeatAt: heartbeatReceivedAt,
+    telemetryAt: telemetryReceivedAt,
+    lastSeenChangedAt: lastSeen.changedAt,
+    lastSeenReadable: lastSeen.readable,
+    commandError,
+    telemetryUnreadable,
+  });
 
   return {
     privateControl,
@@ -677,6 +713,7 @@ export function useControlSession(
     link,
     lagMs,
     slowLink,
+    signs,
     names,
     pushLog,
     sendCommand,
