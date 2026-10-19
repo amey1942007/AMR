@@ -8,7 +8,6 @@ import { asset } from '@/lib/asset';
 import { getAuthClient, getBroadcastClient } from '@/services/supabase-client';
 import { BOTS, type BotId, type ControlCommand } from '@/lib/telemetry/protocol';
 import { offlineMessage, type LinkPhase } from '@/lib/telemetry/link-status';
-import { SIGN_DOWN, SIGN_ERROR, SIGN_NO_DATA, type StatusSignId } from '@/lib/telemetry/status-signs';
 import { useControlSession } from '@/lib/telemetry/useControlSession';
 import { clampLinAng, clampToolParams, commandRejectText, estopLatchAllowed, mapNameError, JOY_HZ, NUDGE_REPEAT_MS, ESTOP_RETRY_MS } from '@/lib/telemetry/commands';
 import { COPY, countdownFraction, formatCountdown, initialOf, secondsRemaining } from '@/lib/control/access';
@@ -133,7 +132,6 @@ export function Dashboard() {
   const robotLive = tel.link.phase === 'live';
   const canEstop = controller;
   const canEdit = canEstop && estop === 'ready' && robotLive && !tel.heartbeatStale && !tel.realtimeDown;
-  const highLag = robotLive && tel.slowLink;
   const bot = BOTS.find((b) => b.id === botId)!;
 
   const send = useCallback(async (cmd: ControlCommand) => {
@@ -328,9 +326,6 @@ export function Dashboard() {
     return () => window.clearTimeout(handle);
   }, [firstRequest, controller, now, toast]);
 
-  const nodes = tel.frame?.nodes ?? {};
-  const nodeKeys = Object.keys(nodes);
-  const allOk = nodeKeys.length > 0 && nodeKeys.every((k) => nodes[k]);
   const driverName = tel.controllerId == null
     ? null
     : tel.controllerId === userId ? 'You' : (tel.controllerName || tel.names[tel.controllerId] || 'Someone');
@@ -365,10 +360,7 @@ export function Dashboard() {
               <button key={b.id} type="button" aria-pressed={b.id === botId} onClick={() => selectBot(b.id)}>{b.label}</button>
             ))}
           </div>
-          <LinkStatus phase={tel.link.phase} label={tel.link.label} highLag={highLag} />
-          {tel.link.showLag && (
-            <span className="mono" style={{ color: 'var(--warn)' }} aria-hidden="true">lag {Math.round(tel.lagMs)} ms</span>
-          )}
+          <LinkDot phase={tel.link.phase} label={tel.link.label} lagMs={tel.link.showLag ? tel.lagMs : null} />
           <div className="op-grow">
             {tel.joining ? <span className="skel" aria-hidden /> : (
               <span className="who" title="Currently driving">
@@ -425,23 +417,6 @@ export function Dashboard() {
           </div>
         </header>
         {controller && estop === 'latched' && <div className="op-estop-bar" role="status">Emergency stop active</div>}
-        <div className="op-status" aria-label="Status">
-          <div className="op-status-row">
-            <div className="op-signs">
-              <Sign id="nodata" on={tel.signs.active === 'nodata'} label={SIGN_NO_DATA} />
-              <Sign id="down" on={tel.signs.active === 'down'} label={SIGN_DOWN} />
-              <Sign id="error" on={tel.signs.active === 'error'} label={SIGN_ERROR} detail={tel.signs.errorReason} />
-            </div>
-            {robotLive && <span className={`pill ${allOk ? 'ok' : 'bad'}`}>{allOk ? 'Systems go' : 'Degraded'}</span>}
-            {robotLive && tel.frame?.tool && <span className="pill run">{tel.frame.tool}</span>}
-            {robotLive && tel.frame?.vision && <span className="pill vision">Vision</span>}
-            {robotLive && tel.frame?.saving && <span className="pill saving">Saving map</span>}
-            {tel.channelNote && <span className="op-note">{tel.channelNote}</span>}
-            <span className="op-telem mono" aria-label="Telemetry">
-              x {fmt(tel.frame?.pose?.[0], 2)} · y {fmt(tel.frame?.pose?.[1], 2)} · yaw {tel.frame?.pose ? (tel.frame.pose[2] * 57.2958).toFixed(1) : '–'}° · v {fmt(tel.frame?.vel[0], 2)}
-            </span>
-          </div>
-        </div>
       </div>
 
       {controller && requests.length > 0 && (
@@ -877,41 +852,23 @@ function CameraPip({ frame, phase, lastAt, now }: { frame: NormState | null; pha
   );
 }
 
-function Sign({ id, on, label, detail }: { id: StatusSignId; on: boolean; label: string; detail?: string | null }) {
+/** Link state as a single color dot: green=live, yellow=connecting/idle, red=offline. */
+function LinkDot({ phase, label, lagMs }: { phase: LinkPhase; label: string; lagMs: number | null }) {
+  const tone = phase === 'live' ? 'ok' : phase === 'offline' ? 'err' : 'warn';
+  const title = lagMs != null ? `${label} · lag ${Math.round(lagMs)} ms` : label;
   return (
-    <span className={`op-sign sign-${id}`} data-on={on ? 'true' : 'false'} aria-current={on ? 'true' : undefined}>
-      <SignMark id={id} />
-      <span>{label}</span>
-      {on && detail && <span className="reason">{detail}</span>}
+    <span
+      className={`op-link-dot ${tone}`}
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      aria-label={title}
+      title={title}
+    >
+      <span className="op-link-dot-core" aria-hidden />
+      <span className="sr-only">{title}</span>
     </span>
   );
-}
-
-function SignMark({ id }: { id: StatusSignId }) {
-  if (id === 'nodata') return <span className="sign-half" aria-hidden />;
-  if (id === 'down') return <span className="sign-hollow" aria-hidden />;
-  return (
-    <svg className="sign-x" viewBox="0 0 12 12" aria-hidden>
-      <path d="M2 2 L10 10 M10 2 L2 10" fill="none" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
-  );
-}
-
-function LinkStatus({ phase, label, highLag }: { phase: LinkPhase; label: string; highLag: boolean }) {
-  return (
-    <span className={`pill link ${phase}`} role="status" aria-live="polite" aria-atomic="true">
-      <StatusMark phase={phase} />
-      {label}
-      {highLag && <span className="sr-only"> Slow connection</span>}
-    </span>
-  );
-}
-
-function StatusMark({ phase }: { phase: LinkPhase }) {
-  if (phase === 'connecting') return <span className="status-ring" aria-hidden />;
-  if (phase === 'idle') return <span className="status-idle" aria-hidden />;
-  if (phase === 'live') return <span className="status-live" aria-hidden />;
-  return <span className="status-off" aria-hidden />;
 }
 
 function Eye() {
