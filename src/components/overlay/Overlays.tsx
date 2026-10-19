@@ -11,18 +11,21 @@ import { useServices } from '@/components/providers/ServicesProvider';
 import { Vector3 } from 'three';
 
 const KEYS = ['c1', 'c2', 'c3'] as const;
+const CLOUD_KEYS = ['cb1', 'cb2', 'cb3', 'cb4'] as const;
 
-/** Fixed overlay layer (z 10): callouts + leader, DataChip, Minimap, "Beyond the room." — all aria-hidden (story in SrDescription). */
+/** Fixed overlay layer (z 10): callouts + leader, DataChip, Minimap, cloud beats — all aria-hidden (story in SrDescription). */
 /** `live` = the 3D journey runs; without it (no WebGL) the live minimap is hidden and Fallback3D shows the static map image, or nothing. */
 export function Overlays({ tier, mobile, live = true }: { tier: 'high' | 'low'; mobile: boolean; live?: boolean }) {
   const cards = useRef<(HTMLDivElement | null)[]>([]);
+  const cloudCards = useRef<(HTMLDivElement | null)[]>([]);
   const path = useRef<SVGPathElement>(null);
   const chip = useRef<HTMLDivElement>(null);
   const scrim = useRef<HTMLDivElement>(null);
   const beyond = useRef<HTMLParagraphElement>(null);
+  const cloudWrap = useRef<HTMLDivElement>(null);
   const mapWrap = useRef<HTMLDivElement>(null);
   useTick(() => {
-    let active: HTMLDivElement | null = null, best = 0;
+    let active: HTMLDivElement | null = null, best = 0, cloudBest = 0;
     KEYS.forEach((k, i) => {
       const el = cards.current[i];
       if (!el) return;
@@ -32,6 +35,24 @@ export function Overlays({ tier, mobile, live = true }: { tier: 'high' | 'low'; 
       el.style.visibility = v < 0.005 ? 'hidden' : 'visible';
       if (v > best) { best = v; active = el; }
     });
+    let cloudWinner = -1;
+    CLOUD_KEYS.forEach((k, i) => {
+      const v = S[k];
+      if (v > cloudBest) { cloudBest = v; cloudWinner = i; }
+    });
+    CLOUD_KEYS.forEach((k, i) => {
+      const el = cloudCards.current[i];
+      if (!el) return;
+      // Winner-takes-all: never stack two beats (crossfade looked like text soup).
+      const on = i === cloudWinner && cloudBest > 0.005;
+      el.style.opacity = on ? String(cloudBest) : '0';
+      el.style.transform = on ? `translateY(${18 * (1 - cloudBest)}px)` : 'translateY(18px)';
+      el.style.visibility = on ? 'visible' : 'hidden';
+    });
+    if (cloudWrap.current) {
+      cloudWrap.current.style.opacity = cloudBest > 0.005 ? '1' : '0';
+      cloudWrap.current.style.visibility = cloudBest < 0.005 ? 'hidden' : 'visible';
+    }
     if (scrim.current) scrim.current.style.opacity = String(best);
     if (path.current) {
       const a = active as HTMLDivElement | null;
@@ -75,6 +96,25 @@ export function Overlays({ tier, mobile, live = true }: { tier: 'high' | 'low'; 
       <p ref={beyond} className="absolute inset-0 grid place-items-center text-center font-display text-[length:var(--text-display)] font-bold leading-[0.9] tracking-[-0.04em]" style={{ opacity: 0, background: 'radial-gradient(closest-side, rgba(0,0,0,.4), transparent)' }}>
         {copy.beyond}
       </p>
+      <div
+        ref={cloudWrap}
+        className="absolute inset-0 grid place-items-center px-[var(--gutter)]"
+        style={{ opacity: 0, visibility: 'hidden', background: 'radial-gradient(closest-side, rgba(0,0,0,.35), transparent)' }}
+      >
+        {copy.cloudBeats.map((b, i) => (
+          <div
+            key={b.id}
+            ref={(el) => { cloudCards.current[i] = el; }}
+            className="max-w-[36rem] text-center [grid-area:1/1]"
+            style={{ opacity: 0, visibility: 'hidden' }}
+          >
+            <p className="eyebrow text-white/70">{b.eyebrow}</p>
+            <p className="mt-3 font-display text-[length:var(--text-callout)] font-bold leading-[1.15] tracking-[-0.03em] sm:text-[length:var(--text-display)] sm:leading-[0.95]">
+              {b.title}
+            </p>
+          </div>
+        ))}
+      </div>
       {!mobile && (
         <div ref={mapWrap} className="absolute right-[var(--gutter)] bottom-[var(--gutter)]" style={{ opacity: 0, visibility: 'hidden' }}>
           {live && <Minimap />}

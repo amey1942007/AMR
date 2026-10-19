@@ -32,11 +32,18 @@ export function buildMasterTimeline() {
     .to({ envIntensity: 0.35, exposure: 0.9, duration: 0.3 }, 0.6)
     .to({ skyMix: 1, duration: 0.2 }, 0.6)
     .to({ cloudOpacity: 1, duration: 0.1 }, 0.62)
-    .to({ beyond: 1, duration: 0.04 }, 0.66)
-    .to({ beyond: 0, duration: 0.04 }, 0.76)
-    .to({ cloudLight: 1, duration: 0.12 }, 0.78)
-    .to({ cloudDissolve: 1, duration: 0.12, ease: 'power1.in' }, 0.86)
-    .to({ stars: 0.6, duration: 0.16 }, 0.84);
+    // Cloud stretch: sequential startup beats with tiny gaps (no stacked crossfade).
+    .to({ cb1: 1, duration: 0.025 }, 0.64)
+    .to({ cb1: 0, duration: 0.02 }, 0.695)
+    .to({ cb2: 1, duration: 0.025 }, 0.705)
+    .to({ cb2: 0, duration: 0.02 }, 0.76)
+    .to({ cb3: 1, duration: 0.025 }, 0.77)
+    .to({ cb3: 0, duration: 0.02 }, 0.825)
+    .to({ cb4: 1, duration: 0.025 }, 0.835)
+    .to({ cb4: 0, duration: 0.02 }, 0.89)
+    .to({ cloudLight: 1, duration: 0.12 }, 0.8)
+    .to({ cloudDissolve: 1, duration: 0.12, ease: 'power1.in' }, 0.88)
+    .to({ stars: 0.6, duration: 0.16 }, 0.86);
   return tl;
 }
 

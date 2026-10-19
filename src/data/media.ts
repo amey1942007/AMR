@@ -6,6 +6,9 @@ import { asset } from '@/lib/asset';
  * This file is an optional local override: set `simulationVideo` to a file / youtube / vimeo entry, or leave it
  * `null` so the UI loads from the DB (or shows "SIMULATION VIDEO · COMING SOON"). The prebuild check fails the
  * build when a referenced file is missing (never silently).
+ *
+ * When `simulationSlides` is non-empty, the Simulation section uses the coverflow carousel instead of the
+ * single-slot player / Coming Soon placeholder. Add Drive-hosted clips here as more demos land.
  */
 const REAL: MediaVideo | null = null;
 
@@ -24,6 +27,40 @@ const FIXTURE: MediaVideo = {
 };
 
 export const simulationVideo: MediaVideo | null = process.env.NEXT_PUBLIC_SIM_VIDEO_FIXTURE === '1' ? FIXTURE : REAL;
+
+/** One carousel slide — Google Drive file (shared) + local poster. Append more as demos ship. */
+export type SimulationSlide = {
+  id: string;
+  title: string;
+  description?: string;
+  durationSec?: number;
+  /** Shared Google Drive file id → `/file/d/{id}/preview` embed. */
+  driveId: string;
+  poster: string;
+};
+
+/**
+ * Hero simulation carousel (Drive folder demos). Side-by-side coverflow; drag or arrows for next.
+ * Source folder: https://drive.google.com/drive/folders/1ZrrKsbYMGt1IxCyFVXAASHwaje1rcNoL
+ */
+export const simulationSlides: SimulationSlide[] = [
+  {
+    id: 'autonomous',
+    title: 'Autonomous exploration',
+    description: 'Frontier exploration builds the occupancy map room by room.',
+    durationSec: 377,
+    driveId: '1i1sdu3n39QV4dGb6r0yZMLdmqEArgOvY',
+    poster: asset('/video/sim-autonomous-poster.webp'),
+  },
+  {
+    id: 'manual',
+    title: 'Manual teleop control',
+    description: 'Drive from the browser pad while SLAM runs live.',
+    durationSec: 143,
+    driveId: '1lCqyHsr0jLqlJn4mpqnZ6AOy_dc7w2Pk',
+    poster: asset('/video/sim-manual-poster.webp'),
+  },
+];
 
 /** Optional: a file entry once assets land in public/video/. Kept here so the prebuild and MediaService share one source. */
 export const SIMULATION_FILE_EXAMPLE: MediaVideo = {
@@ -53,4 +90,9 @@ export function mediaFilePaths(v: MediaVideo): string[] {
   const out = [v.poster, ...v.sources.map((s) => s.src), ...(v.captions?.map((c) => c.src) ?? [])];
   if (v.posterSet) out.push(...Object.values(v.posterSet).filter(Boolean) as string[]);
   return out.map((p) => p.replace(/\?.*$/, '').replace(/^\//, ''));
+}
+
+/** Poster paths for carousel slides (prebuild size check). */
+export function simulationSlidePosterPaths(): string[] {
+  return simulationSlides.map((s) => s.poster.replace(/\?.*$/, '').replace(/^\//, ''));
 }

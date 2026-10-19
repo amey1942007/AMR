@@ -4,7 +4,11 @@ import { useServices } from '@/components/providers/ServicesProvider';
 import { Placeholder } from './Placeholder';
 import { copy } from '@/lib/content';
 
-const CAPTIONS = ['AMR4, close up.', ...copy.callouts.map((c) => `${c.eyebrow} — ${c.title}`), copy.beyond];
+const CAPTIONS = [
+  'AMR4, close up.',
+  ...copy.callouts.map((c) => `${c.eyebrow} — ${c.title}`),
+  ...copy.cloudBeats.map((b) => `${b.eyebrow} — ${b.title}`),
+];
 
 /** Reduced motion: stacked stills with captions (no scrub, no canvas). Missing stills → room placeholder. */
 export function ReducedMotionStory() {

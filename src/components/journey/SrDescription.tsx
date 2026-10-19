@@ -7,6 +7,7 @@ export function SrDescription() {
       <ol>
         {copy.callouts.map((c) => <li key={c.id}>{c.eyebrow}: {c.title}</li>)}
         <li>{copy.beyond}</li>
+        {copy.cloudBeats.map((b) => <li key={b.id}>{b.eyebrow}: {b.title}</li>)}
       </ol>
     </div>
   );

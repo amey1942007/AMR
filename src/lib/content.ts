@@ -16,6 +16,13 @@ export const copy = {
     { id: 'c3', eyebrow: 'MOVE', title: 'Plans a path and moves in any direction (mecanum).' },
   ],
   beyond: 'Beyond the room.',
+  /** Center overlays during the long cloud stretch (fills dead scroll after the room). */
+  cloudBeats: [
+    { id: 'cb1', eyebrow: 'SCALE', title: 'Beyond the room.' },
+    { id: 'cb2', eyebrow: 'BUILD', title: 'Jetson AMR4 · Pi 5 Hardware Bot.' },
+    { id: 'cb3', eyebrow: 'STACK', title: 'ROS 2 · Nav2 · slam_toolbox.' },
+    { id: 'cb4', eyebrow: 'DRIVE', title: 'Browser teleop — or explore alone.' },
+  ],
 } as const;
 
 export interface RobotSpec {

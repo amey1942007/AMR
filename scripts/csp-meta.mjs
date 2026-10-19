@@ -35,7 +35,8 @@ const base = (scriptSrc, route = '') => [
   "font-src 'self'",
   `connect-src 'self' data: blob:${connectSupa ? ' ' + connectSupa : ''}`,
   "worker-src 'self' blob:",
-  'frame-src https://www.youtube-nocookie.com https://player.vimeo.com',
+  // Drive preview embeds for the simulation carousel (plus YouTube/Vimeo for site_videos).
+  'frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://drive.google.com https://docs.google.com',
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
