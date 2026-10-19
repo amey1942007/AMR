@@ -4,7 +4,7 @@ import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useServices } from '@/components/providers/ServicesProvider';
 import { readConfig } from '@/lib/config';
-import { COPY, MIN_PASSWORD, passwordRules } from '@/lib/control/access';
+import { COPY, passwordRules } from '@/lib/control/access';
 import {
   isUsernameShape,
   normalizeUsername,
@@ -139,14 +139,14 @@ export function SignInForm({ redirectTarget }: { redirectTarget: string; startFo
     if (busy) return;
     setPassErr('');
     const rules = passwordRules(password, confirm);
-    if (!rules.length) { setPassErr(`Use at least ${MIN_PASSWORD} characters.`); return; }
+    if (!rules.length) { setPassErr('Enter a password.'); return; }
     if (!rules.match) { setPassErr(COPY.mismatch); return; }
     if (!cfg.supabaseUrl || !cfg.supabaseKey) { setPassErr(COPY.network); return; }
     setBusy(true);
     const claimed = await operatorClaim(cfg.supabaseUrl, cfg.supabaseKey, name, password);
     if (claimed.status !== 'ok') {
       setBusy(false);
-      if (claimed.reason === 'password') setPassErr(`Use at least ${MIN_PASSWORD} characters.`);
+      if (claimed.reason === 'password') setPassErr('Enter a password.');
       else if (claimed.status === 'network' || claimed.status === 'unavailable') setPassErr(COPY.network);
       else setPassErr('Couldn\'t set password. Email amey@amrslam.tech or admin@amrslam.tech.');
       return;

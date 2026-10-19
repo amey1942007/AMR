@@ -29,7 +29,7 @@ function normUser(u: unknown): string {
 }
 
 function validPassword(p: unknown): p is string {
-  return typeof p === "string" && p.length >= 10 && p.length <= 128;
+  return typeof p === "string" && p.length >= 1 && p.length <= 128;
 }
 
 function randomPassword(): string {

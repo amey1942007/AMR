@@ -1,7 +1,8 @@
 /** Access-flow timings, copy, and parsers. No secrets. */
 
 export const SET_PASSWORD_REDIRECT = 'https://amrslam.tech/set-password';
-export const MIN_PASSWORD = 10;
+/** Non-empty only — no long minimum (Supabase may still enforce its own floor). */
+export const MIN_PASSWORD = 1;
 
 export const COPY = {
   invalid: 'Name or password is incorrect.',
