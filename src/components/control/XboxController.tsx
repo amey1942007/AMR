@@ -18,15 +18,17 @@ const BIT = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, View: 6, Menu: 7 } as const;
 
 type Props = {
   open: boolean;
-  onClose: () => void;
+  onClose?: () => void;
   canEdit: boolean;
   padLabel: 'none' | 'connected' | 'idle';
   physical: JoyReading | null;
   /** Written while the on-screen pad is driving; null when idle so a real pad can take over. */
   virtualRef: MutableRefObject<JoyReading | null>;
+  /** `page` = full-window mobile controller (no scrim). */
+  variant?: 'overlay' | 'page';
 };
 
-export function XboxController({ open, onClose, canEdit, padLabel, physical, virtualRef }: Props) {
+export function XboxController({ open, onClose, canEdit, padLabel, physical, virtualRef, variant = 'overlay' }: Props) {
   const [virt, setVirt] = useState<JoyReading>(ZERO);
   const [wasOpen, setWasOpen] = useState(open);
   const drag = useRef<{ stick: 'L' | 'R'; pointerId: number } | null>(null);
@@ -48,7 +50,7 @@ export function XboxController({ open, onClose, canEdit, padLabel, physical, vir
   }, [open, virtualRef]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !onClose) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -140,15 +142,16 @@ export function XboxController({ open, onClose, canEdit, padLabel, physical, vir
       : padLabel === 'connected' ? 'Streaming joy → web_gamepad / bridge'
         : 'Touch sticks to stream joy commands';
 
-  return (
-    <div className="xb-scrim" role="dialog" aria-modal="true" aria-label="Xbox controller" onClick={onClose}>
-      <div className="xb-panel glass-liquid" onClick={(e) => e.stopPropagation()}>
+  const panel = (
+      <div className={`xb-panel glass-liquid ${variant === 'page' ? 'xb-page' : ''}`} onClick={variant === 'overlay' ? (e) => e.stopPropagation() : undefined}>
         <div className="xb-head">
           <div>
             <h3>Xbox controller</h3>
             <p className="xb-status">{status}</p>
           </div>
-          <button type="button" className="btn ghost" onClick={onClose}>Close</button>
+          {variant === 'overlay' && onClose ? (
+            <button type="button" className="btn ghost" onClick={onClose}>Close</button>
+          ) : null}
         </div>
 
         <div className={`xb-body ${canEdit ? '' : 'locked'}`} aria-disabled={!canEdit}>
@@ -200,6 +203,15 @@ export function XboxController({ open, onClose, canEdit, padLabel, physical, vir
           Left stick → drive · A seq · B save map · X vision · Y / shoulders IMU · matches web_gamepad_node
         </p>
       </div>
+  );
+
+  if (variant === 'page') {
+    return <div className="xb-page-root" aria-label="Xbox controller">{panel}</div>;
+  }
+
+  return (
+    <div className="xb-scrim" role="dialog" aria-modal="true" aria-label="Xbox controller" onClick={onClose}>
+      {panel}
     </div>
   );
 }
