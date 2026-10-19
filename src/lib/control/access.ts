@@ -4,11 +4,12 @@ export const SET_PASSWORD_REDIRECT = 'https://amrslam.tech/set-password';
 export const MIN_PASSWORD = 10;
 
 export const COPY = {
-  invalid: 'Email or password is incorrect.',
-  forbidden: "This account doesn't have access. Contact admin@amrslam.tech.",
+  invalid: 'Name or password is incorrect.',
+  forbidden: "This account doesn't have access. Email amey@amrslam.tech or admin@amrslam.tech.",
   rate: 'Too many attempts. Try again in a minute.',
   network: "Can't reach the server. Check your connection.",
-  resetSent: 'If this email has access, a link is on its way.',
+  resetSent: 'Need a reset? Email amey@amrslam.tech or admin@amrslam.tech.',
+  helpReset: 'Need a reset or access? Email amey@amrslam.tech or admin@amrslam.tech.',
   expiredLink: 'This link has expired or was already used.',
   weak: 'Choose a stronger password. This one is too common.',
   mismatch: "Passwords don't match.",

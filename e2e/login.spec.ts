@@ -14,9 +14,9 @@ test.describe('login-spec pages', () => {
     });
   }
 
-  test('/login/reset/ redirects to the forgot-password card', async ({ page }) => {
+  test('/login/reset/ redirects to sign-in', async ({ page }) => {
     await page.goto('/login/reset/');
-    await page.waitForURL(/\/sign-in\/\?forgot=1/, { timeout: 10_000 });
+    await page.waitForURL(/\/sign-in\/$/, { timeout: 10_000 });
     expect(serious(await new AxeBuilder({ page }).analyze())).toEqual([]);
   });
 
