@@ -8,7 +8,18 @@ import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
 let supa = '';
-try { if (process.env.NEXT_PUBLIC_SUPABASE_URL) supa = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).origin; } catch { /* invalid → none */ }
+let supaWs = '';
+try {
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    const u = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL);
+    supa = u.origin;
+    // Browsers do not reliably treat https://host as allowing wss://host for WebSockets.
+    // Realtime needs an explicit wss (or ws) origin or the control panel stays "online, no data".
+    const wsProto = u.protocol === 'https:' ? 'wss:' : u.protocol === 'http:' ? 'ws:' : '';
+    if (wsProto) supaWs = `${wsProto}//${u.host}`;
+  }
+} catch { /* invalid → none */ }
+const connectSupa = [supa, supaWs].filter(Boolean).join(' ');
 
 // The Basis (KTX2) transcoder is an Emscripten/embind build: its worker builds invokers with new Function(), and a
 // blob worker inherits the page's CSP. So the home page (the only page that decodes KTX2: clouds, HDRI) also allows
@@ -22,7 +33,7 @@ const base = (scriptSrc, route = '') => [
   `img-src 'self' data: blob:${supa ? ' ' + supa : ''} https://i.ytimg.com https://i.vimeocdn.com`,
   `media-src 'self' blob:${supa ? ' ' + supa : ''}`,
   "font-src 'self'",
-  `connect-src 'self' data: blob:${supa ? ' ' + supa : ''}`,
+  `connect-src 'self' data: blob:${connectSupa ? ' ' + connectSupa : ''}`,
   "worker-src 'self' blob:",
   'frame-src https://www.youtube-nocookie.com https://player.vimeo.com',
   "object-src 'none'",
@@ -48,4 +59,4 @@ for (const file of walk('out')) {
   n++;
 }
 writeFileSync(join('out', '_headers'), headers.join('\n') + '\n');
-console.log(`ok    CSP meta on ${n} pages; out/_headers with frame-ancestors 'none'${supa ? `; connect-src + ${supa}` : '; no Supabase origin (env unset)'}`);
+console.log(`ok    CSP meta on ${n} pages; out/_headers with frame-ancestors 'none'${connectSupa ? `; connect-src + ${connectSupa}` : '; no Supabase origin (env unset)'}`);

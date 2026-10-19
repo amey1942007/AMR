@@ -53,7 +53,7 @@ export function SetPasswordForm({ tokenHash, type }: { tokenHash: string | null;
   return (
     <div className="op op-auth-page">
       <div className="op-auth">
-        <div>🤖 AMR</div>
+        <div className="op-brand">AMR</div>
         {step === 'expired' && (
           <>
             <h1>Reset your password</h1>
