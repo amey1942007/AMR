@@ -51,8 +51,10 @@ export function Lights({ shadows, mapSize }: { shadows: boolean; mapSize: number
   return (
     <>
       <directionalLight ref={key} color="#F4F1FF" intensity={2.0} castShadow={shadows} shadow-mapSize={[mapSize, mapSize]} shadow-bias={-0.0004} shadow-normalBias={0.02} shadow-radius={6} shadow-blurSamples={12} />
-      <pointLight position={[-3.4, 0.7, 0.4]} color="#E81CB0" intensity={0.9} distance={6} decay={1.5} />
-      <hemisphereLight args={["#2B1A5E", "#0B0B10", 0.25]} />
+      {/* Cool rim from behind-left so the dark chassis reads against the pale floor. */}
+      <directionalLight position={[-2.8, 1.4, -3.2]} color="#C8B8FF" intensity={0.65} />
+      <pointLight position={[-3.4, 0.7, 0.4]} color="#E81CB0" intensity={1.05} distance={6} decay={1.5} />
+      <hemisphereLight args={["#2B1A5E", "#0B0B10", 0.32]} />
     </>
   );
 }
@@ -71,20 +73,32 @@ export function FogCtl() {
   return null;
 }
 
-/** Pause per ui-spec §8: '#info' top < 0 or a dialog open → render on demand. Tab hidden is handled by rAF. */
+/** Pause per ui-spec §8: '#info' top < 0 or a dialog open → render on demand. Also stop when tab/canvas hidden. */
 export function FrameloopCtl() {
-  const { setFrameloop, invalidate } = useThree();
+  const { setFrameloop, invalidate, gl } = useThree();
   useEffect(() => {
     let mode: 'always' | 'demand' | 'never' = 'always';
+    let onScreen = true;
     const tick = () => {
       const info = document.getElementById('info');
       // ui-spec §14.3: while the simulation video plays, render 0 frames ('never' ignores stray invalidate() calls).
-      const stop = useScene.getState().renderPaused;
+      const stop = useScene.getState().renderPaused || document.hidden || !onScreen;
       const paused = (info ? info.getBoundingClientRect().top < 0 : false) || useUI.getState().dialog !== null;
       const next = stop ? 'never' : paused ? 'demand' : 'always';
       if (next !== mode) { mode = next; setFrameloop(next); if (next === 'demand') invalidate(); }
     };
-    return addTick(tick);
-  }, [setFrameloop, invalidate]);
+    const canvas = gl.domElement;
+    const io = typeof IntersectionObserver !== 'undefined'
+      ? new IntersectionObserver(([e]) => { onScreen = !!e?.isIntersecting; tick(); }, { root: null, threshold: 0.02 })
+      : null;
+    if (io && canvas) io.observe(canvas);
+    document.addEventListener('visibilitychange', tick);
+    const stopTick = addTick(tick);
+    return () => {
+      stopTick();
+      document.removeEventListener('visibilitychange', tick);
+      io?.disconnect();
+    };
+  }, [setFrameloop, invalidate, gl]);
   return null;
 }

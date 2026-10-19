@@ -11,6 +11,7 @@ import { JOY_HZ } from '@/lib/telemetry/commands';
 import { persistBot, readStoredBot, isBotId } from '@/lib/control/bot-persist';
 import { useControlSession } from '@/lib/telemetry/useControlSession';
 import { WaveLines } from '@/components/effects/WaveLines';
+import { LinkDot } from './LinkDot';
 import { XboxController, readPhysicalGamepad, type JoyReading } from './XboxController';
 import '@/components/effects/effects.css';
 import './dashboard.css';
@@ -114,14 +115,11 @@ export function PadPage() {
           {controller && (
             <button type="button" className="op-estop" onClick={fireEstop}>E-STOP</button>
           )}
+          <LinkDot phase={tel.link.phase} label={tel.link.label} lagMs={tel.link.showLag ? tel.lagMs : null} />
           <button type="button" className="btn ghost" onClick={() => { void signOut().then(() => window.location.replace(asset('/sign-in/'))); }}>Sign out</button>
         </div>
       </header>
-      <p className="op-pad-note">
-        {tel.link.phase === 'offline' ? `${bot.label} offline` : tel.link.label}
-        {' · '}
-        Mobile complete control — keep this window open while driving
-      </p>
+      <p className="op-pad-note">Mobile complete control — keep this window open while driving</p>
       <XboxController
         open
         variant="page"

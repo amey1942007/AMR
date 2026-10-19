@@ -27,7 +27,8 @@ silenceR3FClockWarning(); // must run before <Canvas> creates its store (R3F cal
 export default function JourneyCanvas({ tier, mobile, saveData, onFail }: { tier: Tier; mobile: boolean; saveData: boolean; onFail: () => void }) {
   const debug = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1';
   const high = tier === 'high';
-  const maxDpr = typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, high ? 2 : 1.25);
+  // Mobile / low: hard-cap DPR — fill rate from clouds + AgX was the main scroll hitch.
+  const maxDpr = typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, high && !mobile ? 2 : mobile ? 1 : 1.25);
   const [dpr, setDpr] = useState(maxDpr);
   useEffect(() => { useScene.setState({ tier }); }, [tier]);
   useEffect(() => {
@@ -74,16 +75,22 @@ export default function JourneyCanvas({ tier, mobile, saveData, onFail }: { tier
       <CameraRig parallax={!mobile} />
       <Lights shadows={high} mapSize={2048} />
       <FogCtl />
-      <EnvironmentHDRI tier={tier} />
+      <EnvironmentHDRI tier={tier} defer={mobile || !high || saveData} />
       <RoomShell grid={high} />
       <Props high={high} />
       <HeroRobot tier={tier} allowHi={high && !mobile && !saveData} />
-      <LidarPulse rays={high ? 180 : 90} />
-      <SkyDome stars={high ? 600 : 300} />
+      <LidarPulse rays={high && !mobile ? 180 : 90} />
+      <SkyDome stars={high && !mobile ? 600 : 240} />
       <Suspense fallback={null}>
-        {high && !mobile && <CloudVolume onReady={onVol} />}
-        {/* Sprite fallback: low tier / mobile, and on high tier until the volume textures are ready (or if they fail). */}
-        {!(high && !mobile && volOk) && <CloudDeck count={4} segments={mobile ? 8 : 10} low={!high || mobile} />}
+        {high && !mobile && !saveData && <CloudVolume onReady={onVol} />}
+        {/* Sprite fallback: low / mobile / save-data, and on high until the volume is ready (or fails). */}
+        {!(high && !mobile && !saveData && volOk) && (
+          <CloudDeck
+            count={mobile || saveData ? 2 : 4}
+            segments={mobile || saveData ? 4 : high ? 10 : 6}
+            low={!high || mobile || saveData}
+          />
+        )}
       </Suspense>
       {high && !(debug && new URLSearchParams(window.location.search).has('nopost')) && <Post />}
     </Canvas>

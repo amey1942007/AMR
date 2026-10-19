@@ -15,6 +15,7 @@ import { persistBot, readStoredBot } from '@/lib/control/bot-persist';
 import type { NormState } from '@/lib/telemetry/normalize';
 import { WaveLines } from '@/components/effects/WaveLines';
 import { LiveCanvas } from './LiveCanvas';
+import { LinkDot } from './LinkDot';
 import { readPhysicalGamepad, type JoyReading } from './XboxController';
 import '@/components/effects/effects.css';
 import './dashboard.css';
@@ -199,10 +200,13 @@ export function Dashboard() {
     if (prevController.current === undefined) { prevController.current = id; return; }
     if (prevController.current !== id) {
       const name = id == null ? 'No one' : id === userId ? 'You' : (tel.controllerName || tel.names[id] || 'Someone');
-      if (id != null) toast(COPY.nowDriving(name === 'You' ? (tel.names[id] || 'You') : name));
+      // Don't claim someone is "driving" while the robot is offline — that toast was a false positive.
+      if (id != null && tel.link.phase !== 'offline') {
+        toast(COPY.nowDriving(name === 'You' ? (tel.names[id] || 'You') : name));
+      }
     }
     prevController.current = id;
-  }, [tel.controllerId, tel.controllerName, tel.names, userId, toast]);
+  }, [tel.controllerId, tel.controllerName, tel.names, tel.link.phase, userId, toast]);
 
   useEffect(() => {
     if (joined.current || tel.joining || !tel.role) return;
@@ -470,22 +474,28 @@ export function Dashboard() {
         <div className="op-layout">
           <section className="card op-live" aria-label="Live view">
             <h2>Live view · odom · wheel-zoom · click = nav goal</h2>
-            {tel.link.phase === 'offline' && (
-              <div className="offline">
-                <p style={{ color: 'var(--tx)', fontWeight: 700 }}>
-                  {tel.link.unreadable ? tel.link.label : `${bot.label} is offline`}
-                </p>
-                <p>
-                  {tel.link.unreadable
-                    ? tel.link.offlineDetail
-                    : offlineMessage(tel.link.offlineDetail ?? '', tel.link.lastSeenAtMs, now)}
-                </p>
-              </div>
+            {!robotLive && tel.link.phase !== 'offline' && (
+              <p className="help">{tel.link.mapPlaceholder ?? 'Waiting for robot…'}</p>
             )}
-            {!robotLive && <p className="help">Waiting for robot…</p>}
             <div className="op-live-stage">
-              <LiveCanvas state={tel.frame} map={tel.map} scale={scale} onScale={setScale} canEdit={canEdit} mode={mode} showSlam={showSlam} lastAt={tel.lastTelemetryAt} placeholder={tel.link.mapPlaceholder} onNav={(x, y) => void send({ type: 'nav_goal', x, y })} onBlacklist={(x, y, radius) => void send({ type: 'blacklist', action: 'add', x, y, radius, duration })} />
-              <CameraPip frame={tel.frame} phase={tel.link.phase} lastAt={tel.lastTelemetryAt} now={now} />
+              {tel.link.phase === 'offline' ? (
+                <div className="op-offline-empty" role="status">
+                  <p className="op-offline-title">
+                    {tel.link.unreadable ? tel.link.label : `${bot.label} is offline`}
+                  </p>
+                  <p className="op-offline-detail">
+                    {tel.link.unreadable
+                      ? tel.link.offlineDetail
+                      : offlineMessage(tel.link.offlineDetail ?? '', tel.link.lastSeenAtMs, now)}
+                  </p>
+                  <p className="op-offline-hint">Power the robot on and keep the bridge connected — this view fills in when telemetry arrives.</p>
+                </div>
+              ) : (
+                <>
+                  <LiveCanvas state={tel.frame} map={tel.map} scale={scale} onScale={setScale} canEdit={canEdit} mode={mode} showSlam={showSlam} lastAt={tel.lastTelemetryAt} placeholder={tel.link.mapPlaceholder} onNav={(x, y) => void send({ type: 'nav_goal', x, y })} onBlacklist={(x, y, radius) => void send({ type: 'blacklist', action: 'add', x, y, radius, duration })} />
+                  <CameraPip frame={tel.frame} phase={tel.link.phase} lastAt={tel.lastTelemetryAt} now={now} />
+                </>
+              )}
             </div>
             <div className="readouts">
               <Tile k="x (odom)" v={fmt(tel.frame?.pose?.[0], 2)} />
@@ -849,25 +859,6 @@ function CameraPip({ frame, phase, lastAt, now }: { frame: NormState | null; pha
         <p className="muted">Waiting for camera…</p>
       )}
     </aside>
-  );
-}
-
-/** Link state as a single color dot: green=live, yellow=connecting/idle, red=offline. */
-function LinkDot({ phase, label, lagMs }: { phase: LinkPhase; label: string; lagMs: number | null }) {
-  const tone = phase === 'live' ? 'ok' : phase === 'offline' ? 'err' : 'warn';
-  const title = lagMs != null ? `${label} · lag ${Math.round(lagMs)} ms` : label;
-  return (
-    <span
-      className={`op-link-dot ${tone}`}
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-      aria-label={title}
-      title={title}
-    >
-      <span className="op-link-dot-core" aria-hidden />
-      <span className="sr-only">{title}</span>
-    </span>
   );
 }
 

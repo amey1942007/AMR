@@ -25,6 +25,7 @@ export function SignInForm({ redirectTarget }: { redirectTarget: string; startFo
   const [step, setStep] = useState<Step>('name');
   const [name, setName] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [resolvedEmail, setResolvedEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [show, setShow] = useState(false);
@@ -89,6 +90,7 @@ export function SignInForm({ redirectTarget }: { redirectTarget: string; startFo
     if (st.status !== 'ok') { setNameErr('That name isn\'t on the allowlist.'); return; }
     setName(st.username);
     setDisplayName(st.displayName || st.username);
+    setResolvedEmail(st.email ?? '');
     setPassword('');
     setConfirm('');
     setStep(st.needsPassword ? 'set-password' : 'password');
@@ -110,18 +112,26 @@ export function SignInForm({ redirectTarget }: { redirectTarget: string; startFo
       return;
     }
     if (!cfg.supabaseUrl || !cfg.supabaseKey) { setBusy(false); setPassErr(COPY.network); return; }
-    const resolved = await operatorEmail(cfg.supabaseUrl, cfg.supabaseKey, name);
-    if (resolved.status !== 'ok') {
-      setBusy(false);
-      setPassErr(resolved.status === 'network' ? COPY.network : 'That name isn\'t on the allowlist.');
-      return;
+    // Prefer email from the status step (one round-trip). Fall back to cache / email action.
+    let email = resolvedEmail;
+    let needsPassword = false;
+    if (!email) {
+      const resolved = await operatorEmail(cfg.supabaseUrl, cfg.supabaseKey, name);
+      if (resolved.status !== 'ok') {
+        setBusy(false);
+        setPassErr(resolved.status === 'network' ? COPY.network : 'That name isn\'t on the allowlist.');
+        return;
+      }
+      email = resolved.email;
+      needsPassword = resolved.needsPassword;
+      setResolvedEmail(email);
     }
-    if (resolved.needsPassword) {
+    if (needsPassword) {
       setBusy(false);
       setStep('set-password');
       return;
     }
-    const res = await auth.signIn({ email: resolved.email, password });
+    const res = await auth.signIn({ email, password });
     if (res.status === 'ok') {
       if (!(await gateOperator())) { setBusy(false); return; }
       goAfterSignIn();
@@ -219,7 +229,7 @@ export function SignInForm({ redirectTarget }: { redirectTarget: string; startFo
               <button className="btn full" type="submit" disabled={busy}>{busy ? 'Please wait…' : 'Sign in'}</button>
             </div>
             <p style={{ marginTop: 12 }}>
-              <button type="button" className="link" onClick={() => { setStep('name'); setPassErr(''); setPassword(''); }}>Change name</button>
+              <button type="button" className="link" onClick={() => { setStep('name'); setPassErr(''); setPassword(''); setResolvedEmail(''); }}>Change name</button>
             </p>
           </form>
         )}
@@ -252,7 +262,7 @@ export function SignInForm({ redirectTarget }: { redirectTarget: string; startFo
               <button className="btn full" type="submit" disabled={busy}>{busy ? 'Please wait…' : 'Save password & continue'}</button>
             </div>
             <p style={{ marginTop: 12 }}>
-              <button type="button" className="link" onClick={() => { setStep('name'); setPassErr(''); setPassword(''); setConfirm(''); }}>Change name</button>
+              <button type="button" className="link" onClick={() => { setStep('name'); setPassErr(''); setPassword(''); setConfirm(''); setResolvedEmail(''); }}>Change name</button>
             </p>
           </form>
         )}
