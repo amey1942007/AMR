@@ -61,7 +61,8 @@ export function SetPasswordForm({ tokenHash, type }: { tokenHash: string | null;
           <>
             <h1>Reset your password</h1>
             <p className="err" role="alert">⚠ {error || COPY.expiredLink}</p>
-            <p style={{ marginTop: 16 }}><a className="btn full" href="/sign-in/?forgot=1" style={{ display: 'grid', placeItems: 'center', textDecoration: 'none' }}>Send a new link</a></p>
+            <p className="sub" style={{ marginTop: 12 }}>Need help? Email <a href="mailto:amey@amrslam.tech">amey@amrslam.tech</a> or <a href="mailto:admin@amrslam.tech">admin@amrslam.tech</a>.</p>
+            <p style={{ marginTop: 16 }}><a className="btn full" href="/sign-in/" style={{ display: 'grid', placeItems: 'center', textDecoration: 'none' }}>Back to sign in</a></p>
           </>
         )}
         {step === 'continue' && (

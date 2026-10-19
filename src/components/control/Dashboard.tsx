@@ -360,6 +360,7 @@ export function Dashboard() {
           <div className="op-reconnect" role="status">{tel.heartbeatError || 'Reconnecting…'}</div>
         )}
         <header className="op-header">
+          <a className="op-home" href={asset('/')} title="Back to home">← Home</a>
           <h1>
             <span className="op-brand">AMR</span>
             <span className="op-bot-label">{bot.label}</span>

@@ -4,28 +4,33 @@ import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useServices } from '@/components/providers/ServicesProvider';
 import { readConfig } from '@/lib/config';
-import { COPY } from '@/lib/control/access';
+import { COPY, MIN_PASSWORD, passwordRules } from '@/lib/control/access';
+import {
+  isUsernameShape,
+  normalizeUsername,
+  operatorClaim,
+  operatorEmail,
+  operatorStatus,
+} from '@/lib/control/operator-auth';
 import { WaveLines } from '@/components/effects/WaveLines';
 import '@/components/effects/effects.css';
 import '@/components/control/dashboard.css';
 
-export function SignInForm({ redirectTarget, startForgot = false }: { redirectTarget: string; startForgot?: boolean }) {
+type Step = 'name' | 'password' | 'set-password';
+
+export function SignInForm({ redirectTarget }: { redirectTarget: string; startForgot?: boolean }) {
   const { auth } = useServices();
   const cfg = readConfig();
   const router = useRouter();
-  const [forgot, setForgot] = useState(startForgot);
-  const [forgotFrom, setForgotFrom] = useState(startForgot);
-  if (startForgot !== forgotFrom) {
-    setForgotFrom(startForgot);
-    setForgot(startForgot);
-  }
-  const [email, setEmail] = useState('');
+  const [step, setStep] = useState<Step>('name');
+  const [name, setName] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [emailErr, setEmailErr] = useState('');
+  const [nameErr, setNameErr] = useState('');
   const [passErr, setPassErr] = useState('');
-  const [info, setInfo] = useState('');
 
   if (!auth.isAvailable()) {
     return (
@@ -40,53 +45,120 @@ export function SignInForm({ redirectTarget, startForgot = false }: { redirectTa
     );
   }
 
-  async function onSignIn(e: FormEvent) {
+  function goAfterSignIn() {
+    const go = () => (redirectTarget.startsWith('/') ? router.replace(redirectTarget) : window.location.assign(redirectTarget));
+    go();
+  }
+
+  async function gateOperator() {
+    if (auth.name !== 'supabase' || !cfg.supabaseUrl || !cfg.supabaseKey) return true;
+    const session = await auth.getSession();
+    if (!session?.userId) return true;
+    const { userIsActiveOperator } = await import('@/lib/control/password-flow');
+    const gate = await userIsActiveOperator(cfg.supabaseUrl, cfg.supabaseKey, session.userId);
+    if (gate === 'no') {
+      await auth.signOut();
+      setPassErr(COPY.forbidden);
+      return false;
+    }
+    return true;
+  }
+
+  async function onNameContinue(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
-    setEmailErr(''); setPassErr(''); setInfo('');
-    if (!email.trim()) { setEmailErr('Enter your email.'); return; }
+    setNameErr(''); setPassErr('');
+    const u = normalizeUsername(name);
+    if (!u) { setNameErr('Enter your name.'); return; }
+    if (!isUsernameShape(u)) { setNameErr('Use your operator name (letters, numbers, _).'); return; }
+    setBusy(true);
+    if (auth.name === 'mock') {
+      setBusy(false);
+      if (u !== 'demo') { setNameErr('That name isn\'t on the allowlist.'); return; }
+      setName('demo');
+      setDisplayName('Demo');
+      setPassword('');
+      setConfirm('');
+      setStep('password');
+      return;
+    }
+    if (!cfg.supabaseUrl || !cfg.supabaseKey) { setBusy(false); setNameErr(COPY.network); return; }
+    const st = await operatorStatus(cfg.supabaseUrl, cfg.supabaseKey, u);
+    setBusy(false);
+    if (st.status === 'network' || st.status === 'unavailable') { setNameErr(COPY.network); return; }
+    if (st.status !== 'ok') { setNameErr('That name isn\'t on the allowlist.'); return; }
+    setName(st.username);
+    setDisplayName(st.displayName || st.username);
+    setPassword('');
+    setConfirm('');
+    setStep(st.needsPassword ? 'set-password' : 'password');
+  }
+
+  async function onPasswordSignIn(e: FormEvent) {
+    e.preventDefault();
+    if (busy) return;
+    setPassErr('');
     if (!password) { setPassErr('Enter your password.'); return; }
     setBusy(true);
-    const res = await auth.signIn({ email: email.trim(), password });
+    if (auth.name === 'mock') {
+      const res = await auth.signIn({ email: 'demo@amrslam.tech', password });
+      if (res.status === 'ok') { goAfterSignIn(); return; }
+      setBusy(false);
+      if (res.status === 'rate_limited') setPassErr(COPY.rate);
+      else if (res.status === 'network') setPassErr(COPY.network);
+      else setPassErr(COPY.invalid);
+      return;
+    }
+    if (!cfg.supabaseUrl || !cfg.supabaseKey) { setBusy(false); setPassErr(COPY.network); return; }
+    const resolved = await operatorEmail(cfg.supabaseUrl, cfg.supabaseKey, name);
+    if (resolved.status !== 'ok') {
+      setBusy(false);
+      setPassErr(resolved.status === 'network' ? COPY.network : 'That name isn\'t on the allowlist.');
+      return;
+    }
+    if (resolved.needsPassword) {
+      setBusy(false);
+      setStep('set-password');
+      return;
+    }
+    const res = await auth.signIn({ email: resolved.email, password });
     if (res.status === 'ok') {
-      if (auth.name === 'supabase' && cfg.supabaseUrl && cfg.supabaseKey) {
-        const session = await auth.getSession();
-        if (session?.userId) {
-          const { userIsActiveOperator } = await import('@/lib/control/password-flow');
-          const gate = await userIsActiveOperator(cfg.supabaseUrl, cfg.supabaseKey, session.userId);
-          if (gate === 'no') {
-            await auth.signOut();
-            setPassErr(COPY.forbidden);
-            setBusy(false);
-            return;
-          }
-        }
-      }
-      const go = () => (redirectTarget.startsWith('/') ? router.replace(redirectTarget) : window.location.assign(redirectTarget));
-      go();
+      if (!(await gateOperator())) { setBusy(false); return; }
+      goAfterSignIn();
       return;
     }
     setBusy(false);
     if (res.status === 'forbidden') setPassErr(COPY.forbidden);
     else if (res.status === 'rate_limited') setPassErr(COPY.rate);
     else if (res.status === 'network') setPassErr(COPY.network);
-    else if (res.status === 'unavailable') setPassErr("Sign-in isn't available yet.");
     else setPassErr(COPY.invalid);
   }
 
-  async function onReset(e: FormEvent) {
+  async function onSetPassword(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
-    setEmailErr(''); setInfo('');
-    if (!email.trim()) { setEmailErr('Enter your email.'); return; }
-    if (!cfg.supabaseUrl || !cfg.supabaseKey) { setEmailErr(COPY.network); return; }
+    setPassErr('');
+    const rules = passwordRules(password, confirm);
+    if (!rules.length) { setPassErr(`Use at least ${MIN_PASSWORD} characters.`); return; }
+    if (!rules.match) { setPassErr(COPY.mismatch); return; }
+    if (!cfg.supabaseUrl || !cfg.supabaseKey) { setPassErr(COPY.network); return; }
     setBusy(true);
-    try {
-      const { sendPasswordReset } = await import('@/lib/control/password-flow');
-      await sendPasswordReset(cfg.supabaseUrl, cfg.supabaseKey, email);
-    } catch { /* same copy either way, so the allowlist stays private */ }
+    const claimed = await operatorClaim(cfg.supabaseUrl, cfg.supabaseKey, name, password);
+    if (claimed.status !== 'ok') {
+      setBusy(false);
+      if (claimed.reason === 'password') setPassErr(`Use at least ${MIN_PASSWORD} characters.`);
+      else if (claimed.status === 'network' || claimed.status === 'unavailable') setPassErr(COPY.network);
+      else setPassErr('Couldn\'t set password. Email amey@amrslam.tech or admin@amrslam.tech.');
+      return;
+    }
+    const res = await auth.signIn({ email: claimed.email, password });
+    if (res.status === 'ok') {
+      if (!(await gateOperator())) { setBusy(false); return; }
+      goAfterSignIn();
+      return;
+    }
     setBusy(false);
-    setInfo(COPY.resetSent);
+    setPassErr(res.status === 'network' ? COPY.network : 'Password saved, but sign-in failed. Try again.');
   }
 
   return (
@@ -94,31 +166,103 @@ export function SignInForm({ redirectTarget, startForgot = false }: { redirectTa
       <div className="op-bg" aria-hidden><WaveLines lines={5} /></div>
       <div className="op-auth">
         <div className="op-brand">AMR</div>
-        <h1>{forgot ? 'Send reset link' : 'Sign in'}</h1>
-        {!forgot && <p className="sub">Operator access only.</p>}
-        <form onSubmit={forgot ? onReset : onSignIn} noValidate>
-          <label htmlFor="signin-email">Email</label>
-          <input id="signin-email" name="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={emailErr ? true : undefined} aria-describedby={emailErr ? 'signin-email-err' : undefined} />
-          {emailErr && <p id="signin-email-err" className="err" role="alert">⚠ {emailErr}</p>}
-          {!forgot && (
-            <>
-              <label htmlFor="signin-password">Password</label>
-              <div className="field">
-                <input id="signin-password" name="password" type={show ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} aria-invalid={passErr ? true : undefined} aria-describedby={passErr ? 'signin-pass-err' : undefined} />
-                <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? 'Hide password' : 'Show password'}>{show ? 'Hide' : 'Show'}</button>
-              </div>
-              {passErr && <p id="signin-pass-err" className="err" aria-live="polite">⚠ {passErr}</p>}
-            </>
-          )}
-          {info && <p role="status" className="sub">{info}</p>}
-          <div style={{ marginTop: 16 }}>
-            <button className="btn full" type="submit" disabled={busy}>{busy ? 'Please wait…' : forgot ? 'Send reset link' : 'Sign in'}</button>
-          </div>
-        </form>
-        <p style={{ marginTop: 12 }}>
-          <button type="button" className="link" onClick={() => { setForgot((v) => !v); setInfo(''); setPassErr(''); }}>{forgot ? 'Back to sign in' : 'Forgot password?'}</button>
+        <h1>
+          {step === 'name' && 'Sign in'}
+          {step === 'password' && `Hi, ${displayName || name}`}
+          {step === 'set-password' && 'Set your password'}
+        </h1>
+        <p className="sub">
+          {step === 'name' && 'Enter your operator name.'}
+          {step === 'password' && 'Enter your password to open the control panel.'}
+          {step === 'set-password' && 'Choose a new password for this account. You\'ll use it next time.'}
         </p>
-        <p className="foot">Access is by invitation. Need access? Email admin@amrslam.tech.</p>
+
+        {step === 'name' && (
+          <form onSubmit={onNameContinue} noValidate>
+            <label htmlFor="signin-name">Name</label>
+            <input
+              id="signin-name"
+              name="username"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              aria-invalid={nameErr ? true : undefined}
+              aria-describedby={nameErr ? 'signin-name-err' : undefined}
+            />
+            {nameErr && <p id="signin-name-err" className="err" role="alert">⚠ {nameErr}</p>}
+            <div style={{ marginTop: 16 }}>
+              <button className="btn full" type="submit" disabled={busy}>{busy ? 'Please wait…' : 'Continue'}</button>
+            </div>
+          </form>
+        )}
+
+        {step === 'password' && (
+          <form onSubmit={onPasswordSignIn} noValidate>
+            <label htmlFor="signin-password">Password</label>
+            <div className="field">
+              <input
+                id="signin-password"
+                name="password"
+                type={show ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                aria-invalid={passErr ? true : undefined}
+                aria-describedby={passErr ? 'signin-pass-err' : undefined}
+              />
+              <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? 'Hide password' : 'Show password'}>{show ? 'Hide' : 'Show'}</button>
+            </div>
+            {passErr && <p id="signin-pass-err" className="err" aria-live="polite">⚠ {passErr}</p>}
+            <div style={{ marginTop: 16 }}>
+              <button className="btn full" type="submit" disabled={busy}>{busy ? 'Please wait…' : 'Sign in'}</button>
+            </div>
+            <p style={{ marginTop: 12 }}>
+              <button type="button" className="link" onClick={() => { setStep('name'); setPassErr(''); setPassword(''); }}>Change name</button>
+            </p>
+          </form>
+        )}
+
+        {step === 'set-password' && (
+          <form onSubmit={onSetPassword} noValidate>
+            <label htmlFor="new-password">New password</label>
+            <div className="field">
+              <input
+                id="new-password"
+                name="new-password"
+                type={show ? 'text' : 'password'}
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? 'Hide password' : 'Show password'}>{show ? 'Hide' : 'Show'}</button>
+            </div>
+            <label htmlFor="confirm-password">Confirm password</label>
+            <input
+              id="confirm-password"
+              name="confirm"
+              type={show ? 'text' : 'password'}
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+            />
+            {passErr && <p className="err" role="alert">⚠ {passErr}</p>}
+            <div style={{ marginTop: 16 }}>
+              <button className="btn full" type="submit" disabled={busy}>{busy ? 'Please wait…' : 'Save password & continue'}</button>
+            </div>
+            <p style={{ marginTop: 12 }}>
+              <button type="button" className="link" onClick={() => { setStep('name'); setPassErr(''); setPassword(''); setConfirm(''); }}>Change name</button>
+            </p>
+          </form>
+        )}
+
+        <p className="foot">
+          Need a reset or access? Email{' '}
+          <a href="mailto:amey@amrslam.tech">amey@amrslam.tech</a>
+          {' '}or{' '}
+          <a href="mailto:admin@amrslam.tech">admin@amrslam.tech</a>.
+        </p>
       </div>
     </div>
   );
