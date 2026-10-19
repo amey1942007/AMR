@@ -4,6 +4,8 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { readConfig } from '@/lib/config';
 import { COPY, isExpiredLinkMessage, isWeakPasswordMessage, passwordRules, strengthSegments } from '@/lib/control/access';
+import { WaveLines } from '@/components/effects/WaveLines';
+import '@/components/effects/effects.css';
 import '@/components/control/dashboard.css';
 
 type Step = 'continue' | 'choose' | 'done' | 'expired';
@@ -52,6 +54,7 @@ export function SetPasswordForm({ tokenHash, type }: { tokenHash: string | null;
 
   return (
     <div className="op op-auth-page">
+      <div className="op-bg" aria-hidden><WaveLines lines={5} /></div>
       <div className="op-auth">
         <div className="op-brand">AMR</div>
         {step === 'expired' && (

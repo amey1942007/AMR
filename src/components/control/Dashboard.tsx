@@ -12,8 +12,12 @@ import { SIGN_DOWN, SIGN_ERROR, SIGN_NO_DATA, type StatusSignId } from '@/lib/te
 import { useControlSession } from '@/lib/telemetry/useControlSession';
 import { clampLinAng, clampToolParams, commandRejectText, estopLatchAllowed, mapNameError, JOY_HZ, NUDGE_REPEAT_MS, ESTOP_RETRY_MS } from '@/lib/telemetry/commands';
 import { COPY, countdownFraction, formatCountdown, initialOf, secondsRemaining } from '@/lib/control/access';
+import { persistBot, readStoredBot } from '@/lib/control/bot-persist';
 import type { NormState } from '@/lib/telemetry/normalize';
+import { WaveLines } from '@/components/effects/WaveLines';
 import { LiveCanvas } from './LiveCanvas';
+import { XboxController, readPhysicalGamepad, type JoyReading } from './XboxController';
+import '@/components/effects/effects.css';
 import './dashboard.css';
 
 const NODES = [
@@ -31,7 +35,7 @@ export function Dashboard() {
   const cfg = readConfig();
   const [client, setClient] = useState<SupabaseClient | null>(null);
   const [broadcastClient, setBroadcastClient] = useState<SupabaseClient | null>(null);
-  const [botId, setBotId] = useState<BotId>('amr4');
+  const [botId, setBotId] = useState<BotId>('hardware-bot');
   const userId = session?.userId ?? null;
   const tel = useControlSession(client, userId, botId, broadcastClient);
 
@@ -49,6 +53,9 @@ export function Dashboard() {
   const [account, setAccount] = useState(false);
   const [help, setHelp] = useState(false);
   const [padLabel, setPadLabel] = useState<'none' | 'connected' | 'idle'>('none');
+  const [padOpen, setPadOpen] = useState(false);
+  const [physicalPad, setPhysicalPad] = useState<JoyReading | null>(null);
+  const virtualPadRef = useRef<JoyReading | null>(null);
   const [toasts, setToasts] = useState<{ id: number; text: string; until: number }[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const [flash, setFlash] = useState<'granted' | 'denied' | 'timeout' | null>(null);
@@ -58,6 +65,19 @@ export function Dashboard() {
   const prevController = useRef<string | null | undefined>(undefined);
   const prevMine = useRef<string | null>(null);
   const joined = useRef(false);
+
+  useEffect(() => {
+    const stored = readStoredBot('hardware-bot');
+    setBotId(stored);
+    persistBot(stored);
+  }, []);
+
+  const selectBot = useCallback((id: BotId) => {
+    if (id === botId) return;
+    setBotId(id);
+    persistBot(id);
+    joined.current = false;
+  }, [botId]);
   const estopTimer = useRef(0);
   const holdTimer = useRef(0);
   const helpRef = useRef(false);
@@ -233,8 +253,12 @@ export function Dashboard() {
     const tick = () => {
       timer = window.setTimeout(tick, 1000 / JOY_HZ);
       if (!alive) return;
-      const reading = readGamepad();
-      const next = !reading ? 'none' : (!controller || document.hidden ? 'idle' : 'connected');
+      const physical = readPhysicalGamepad();
+      setPhysicalPad(physical);
+      const reading = virtualPadRef.current ?? physical;
+      const next = !physical && !virtualPadRef.current
+        ? 'none'
+        : (!controller || document.hidden ? 'idle' : 'connected');
       if (padRef.current !== next) { padRef.current = next; setPadLabel(next); }
       if (!reading || !controller || document.hidden || !canEdit) return;
       void sendRef.current({ type: 'joy', a: reading.a, b: reading.b });
@@ -328,64 +352,83 @@ export function Dashboard() {
 
   return (
     <div className="op">
-      <div className="op-sticky">
-      {(tel.heartbeatStale || tel.realtimeDown || tel.heartbeatError) && (
-        <div className="op-reconnect" role="status">{tel.heartbeatError || 'Reconnecting…'}</div>
-      )}
-      <header className="op-header">
-        <h1><span className="op-brand">AMR</span> <span style={{ fontWeight: 600, letterSpacing: '0.02em' }}>{bot.label}</span></h1>
-        <div className="op-switch" role="group" aria-label="Bot">
-          {BOTS.map((b) => (
-            <button key={b.id} type="button" aria-pressed={b.id === botId} onClick={() => { if (b.id !== botId) { setBotId(b.id); joined.current = false; } }}>{b.label}</button>
-          ))}
-        </div>
-        <LinkStatus phase={tel.link.phase} label={tel.link.label} highLag={highLag} />
-        {tel.link.showLag && (
-          <span className="mono" style={{ color: 'var(--warn)' }} aria-hidden="true">lag {Math.round(tel.lagMs)} ms</span>
-        )}
-        {robotLive && <span className={`pill ${allOk ? 'ok' : 'bad'}`}>{allOk ? 'ALL SYSTEMS GO' : 'DEGRADED'}</span>}
-        {robotLive && tel.frame?.tool && <span className="pill run">⏳ {tel.frame.tool}</span>}
-        {robotLive && tel.frame?.vision && <span className="pill vision">👁 VISION ON</span>}
-        {robotLive && tel.frame?.saving && <span className="pill saving">💾 SAVING MAP…</span>}
-        <div className="op-grow">
-          {tel.joining ? <span className="skel" aria-hidden /> : (
-            <span className="who" title="Currently driving">
-              <span className={`av ${driverName && driverName !== 'No one is driving' ? 'driving' : ''}`}>{initialOf(driverName === 'You' ? (session?.email ?? 'You') : driverName)}</span>
-              <span style={{ color: driverName ? 'var(--tx)' : 'var(--dim)' }}>{driverName ?? 'No one is driving'}</span>
-            </span>
-          )}
-          {tel.joining ? <span className="skel" aria-hidden /> : controller ? (
-            <span className="pill ok"><Wheel /> You&apos;re in control</span>
-          ) : (
-            <span className="pill viewer"><Eye /> View only</span>
-          )}
-          <span style={{ position: 'relative' }}>
-            <button type="button" className="av" aria-label="Account" aria-expanded={account} onClick={() => setAccount((v) => !v)}>{initialOf(session?.email)}</button>
-            {account && (
-              <div className="menu" role="menu">
-                <p>{session?.email}</p>
-                <button type="button" className="btn" onClick={() => { void signOut().then(() => window.location.replace(asset('/sign-in/'))); }}>Sign out</button>
-              </div>
-            )}
-          </span>
-          {canEstop && (
-            <button type="button" className={`op-estop ${estop !== 'ready' ? 'latched' : ''}`} title="Space or Esc" onClick={() => { if (estop === 'ready') fireEstop(); }} onPointerDown={() => { if (estop === 'latched') startRearm(); }} onPointerUp={cancelRearm} onPointerLeave={cancelRearm}>
-              {estop === 'retrying' ? 'Retrying…' : estop === 'latched' ? 'STOPPED · Re-arm' : 'E-STOP'}
-              {estop === 'latched' && <span className="hold" style={{ width: `${hold * 100}%` }} />}
-            </button>
-          )}
-        </div>
-      </header>
-      {controller && estop === 'latched' && <div className="op-estop-bar" role="status">EMERGENCY STOP ACTIVE</div>}
-      <div className="op-signs">
-        <Sign id="nodata" on={tel.signs.active === 'nodata'} label={SIGN_NO_DATA} />
-        <Sign id="down" on={tel.signs.active === 'down'} label={SIGN_DOWN} />
-        <Sign id="error" on={tel.signs.active === 'error'} label={SIGN_ERROR} detail={tel.signs.errorReason} />
-        {tel.channelNote && <span className="op-note">{tel.channelNote}</span>}
-        <span className="op-telem mono" aria-label="Telemetry">
-          x {fmt(tel.frame?.pose?.[0], 2)} · y {fmt(tel.frame?.pose?.[1], 2)} · yaw {tel.frame?.pose ? (tel.frame.pose[2] * 57.2958).toFixed(1) : '–'}° · v {fmt(tel.frame?.vel[0], 2)} m/s
-        </span>
+      <div className="op-bg" aria-hidden>
+        <WaveLines lines={5} />
       </div>
+      <div className="op-sticky">
+        {(tel.heartbeatStale || tel.realtimeDown || tel.heartbeatError) && (
+          <div className="op-reconnect" role="status">{tel.heartbeatError || 'Reconnecting…'}</div>
+        )}
+        <header className="op-header">
+          <h1>
+            <span className="op-brand">AMR</span>
+            <span className="op-bot-label">{bot.label}</span>
+          </h1>
+          <div className="op-switch" role="group" aria-label="Bot">
+            {BOTS.map((b) => (
+              <button key={b.id} type="button" aria-pressed={b.id === botId} onClick={() => selectBot(b.id)}>{b.label}</button>
+            ))}
+          </div>
+          <LinkStatus phase={tel.link.phase} label={tel.link.label} highLag={highLag} />
+          {tel.link.showLag && (
+            <span className="mono" style={{ color: 'var(--warn)' }} aria-hidden="true">lag {Math.round(tel.lagMs)} ms</span>
+          )}
+          <div className="op-grow">
+            {tel.joining ? <span className="skel" aria-hidden /> : (
+              <span className="who" title="Currently driving">
+                <span className={`av ${driverName && driverName !== 'No one is driving' ? 'driving' : ''}`}>{initialOf(driverName === 'You' ? (session?.email ?? 'You') : driverName)}</span>
+                <span style={{ color: driverName ? 'var(--tx)' : 'var(--dim)' }}>{driverName ?? 'No one is driving'}</span>
+              </span>
+            )}
+            {tel.joining ? <span className="skel" aria-hidden /> : controller ? (
+              <span className="pill ok"><Wheel /> In control</span>
+            ) : (
+              <span className="pill viewer"><Eye /> View only</span>
+            )}
+            <button
+              type="button"
+              className={`btn ghost xb-open ${padOpen ? 'on' : ''}`}
+              aria-pressed={padOpen}
+              onClick={() => setPadOpen((v) => !v)}
+              title="Open Xbox controller"
+            >
+              Controller
+            </button>
+            <span style={{ position: 'relative' }}>
+              <button type="button" className="av" aria-label="Account" aria-expanded={account} onClick={() => setAccount((v) => !v)}>{initialOf(session?.email)}</button>
+              {account && (
+                <div className="menu" role="menu">
+                  <p>{session?.email}</p>
+                  <button type="button" className="btn" onClick={() => { void signOut().then(() => window.location.replace(asset('/sign-in/'))); }}>Sign out</button>
+                </div>
+              )}
+            </span>
+            {canEstop && (
+              <button type="button" className={`op-estop ${estop !== 'ready' ? 'latched' : ''}`} title="Space or Esc" onClick={() => { if (estop === 'ready') fireEstop(); }} onPointerDown={() => { if (estop === 'latched') startRearm(); }} onPointerUp={cancelRearm} onPointerLeave={cancelRearm}>
+                {estop === 'retrying' ? 'Retrying…' : estop === 'latched' ? 'STOPPED · Re-arm' : 'E-STOP'}
+                {estop === 'latched' && <span className="hold" style={{ width: `${hold * 100}%` }} />}
+              </button>
+            )}
+          </div>
+        </header>
+        {controller && estop === 'latched' && <div className="op-estop-bar" role="status">Emergency stop active</div>}
+        <div className="op-status" aria-label="Status">
+          <div className="op-status-row">
+            <div className="op-signs">
+              <Sign id="nodata" on={tel.signs.active === 'nodata'} label={SIGN_NO_DATA} />
+              <Sign id="down" on={tel.signs.active === 'down'} label={SIGN_DOWN} />
+              <Sign id="error" on={tel.signs.active === 'error'} label={SIGN_ERROR} detail={tel.signs.errorReason} />
+            </div>
+            {robotLive && <span className={`pill ${allOk ? 'ok' : 'bad'}`}>{allOk ? 'Systems go' : 'Degraded'}</span>}
+            {robotLive && tel.frame?.tool && <span className="pill run">{tel.frame.tool}</span>}
+            {robotLive && tel.frame?.vision && <span className="pill vision">Vision</span>}
+            {robotLive && tel.frame?.saving && <span className="pill saving">Saving map</span>}
+            {tel.channelNote && <span className="op-note">{tel.channelNote}</span>}
+            <span className="op-telem mono" aria-label="Telemetry">
+              x {fmt(tel.frame?.pose?.[0], 2)} · y {fmt(tel.frame?.pose?.[1], 2)} · yaw {tel.frame?.pose ? (tel.frame.pose[2] * 57.2958).toFixed(1) : '–'}° · v {fmt(tel.frame?.vel[0], 2)}
+            </span>
+          </div>
+        </div>
       </div>
 
       {controller && requests.length > 0 && (
@@ -418,9 +461,26 @@ export function Dashboard() {
         </div>
       )}
 
-      <div className="op-grid">
+      <div className="op-main">
+        {!controller && (
+          <AccessBanner
+            flash={flash}
+            name={driverName}
+            waitingFor={tel.controllerName || driverName}
+            my={tel.myRequest}
+            now={now}
+            retryLeft={retryLeft}
+            pulse={pulse}
+            error={tel.requestError === 'network' || tel.requestError === 'join'}
+            offline={tel.link.phase === 'offline'}
+            onRequest={() => void tel.requestControl()}
+            onCancel={() => { if (tel.myRequest) void tel.cancelRequest(tel.myRequest.id); }}
+            onRetry={() => { if (tel.requestError) void tel.requestControl(); }}
+          />
+        )}
+
         <section className="card" aria-label="Live view">
-          <h2>Live view — odom frame · wheel-zoom · click = nav goal (when armed)</h2>
+          <h2>Live view · odom · wheel-zoom · click = nav goal</h2>
           {tel.link.phase === 'offline' && (
             <div className="offline">
               <p style={{ color: 'var(--tx)', fontWeight: 700 }}>
@@ -446,80 +506,70 @@ export function Dashboard() {
             <Tile k="cmd ω" v={fmt(tel.frame?.cmd[1], 2)} />
             <Tile k="map pose" v={tel.frame?.mapPose ? `${tel.frame.mapPose[0].toFixed(2)}, ${tel.frame.mapPose[1].toFixed(2)}` : '–'} />
           </div>
-          <div className={`navmode ${canEdit ? '' : 'locked'}`} aria-disabled={!canEdit}>
-            <label><input type="checkbox" checked={mode === 'nav'} onChange={() => setExclusive('nav')} /> Nav-goal mode (click canvas to send goal)</label>
-            <button type="button" className="btn stop" style={{ padding: '4px 12px' }} onClick={() => void send({ type: 'nav_cancel' })}>cancel goal</button>
-            <label title="Waypoint sequences aren't available remotely yet."><input type="checkbox" disabled /> 📍 Seq-add mode (click = add waypoint)</label>
-            <label><input type="checkbox" checked={mode === 'nogo'} onChange={() => setExclusive('nogo')} /> 🚫 No-go mode (drag a circle)</label>
-            <select aria-label="No-go duration" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
-              <option value={60}>1 min</option>
-              <option value={300}>5 min</option>
-              <option value={900}>15 min</option>
-              <option value={0}>permanent</option>
-            </select>
-            <button type="button" className="btn stop" onClick={() => void send({ type: 'blacklist', action: 'clear' })}>clear zones</button>
-            {tel.map && <label><input type="checkbox" checked={showSlam} onChange={(e) => setShowSlam(e.target.checked)} /> Show SLAM map</label>}
+          <div className="op-controls" style={{ marginTop: 10 }}>
+            <div className="pad" aria-disabled={!canEdit}>
+              <span />
+              <PadButton label="Forward" glyph="▲" disabled={!canEdit} onDown={() => startNudge(0.15, 0)} onUp={stopNudge} />
+              <span />
+              <PadButton label="Rotate left" glyph="◀" disabled={!canEdit} onDown={() => startNudge(0, 0.6)} onUp={stopNudge} />
+              <button type="button" aria-label="E-STOP" disabled={!canEstop} onClick={() => { if (estop === 'ready') fireEstop(); }}>■</button>
+              <PadButton label="Rotate right" glyph="▶" disabled={!canEdit} onDown={() => startNudge(0, -0.6)} onUp={stopNudge} />
+              <span />
+              <PadButton label="Back" glyph="▼" disabled={!canEdit} onDown={() => startNudge(-0.15, 0)} onUp={stopNudge} />
+              <span />
+            </div>
+            <div className={`navmode ${canEdit ? '' : 'locked'}`} aria-disabled={!canEdit}>
+              <label><input type="checkbox" checked={mode === 'nav'} onChange={() => setExclusive('nav')} /> Nav-goal</label>
+              <button type="button" className="btn stop" style={{ padding: '4px 12px' }} onClick={() => void send({ type: 'nav_cancel' })}>Cancel goal</button>
+              <label title="Waypoint sequences aren't available remotely yet."><input type="checkbox" disabled /> Seq-add</label>
+              <label><input type="checkbox" checked={mode === 'nogo'} onChange={() => setExclusive('nogo')} /> No-go</label>
+              <select aria-label="No-go duration" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
+                <option value={60}>1 min</option>
+                <option value={300}>5 min</option>
+                <option value={900}>15 min</option>
+                <option value={0}>permanent</option>
+              </select>
+              <button type="button" className="btn stop" onClick={() => void send({ type: 'blacklist', action: 'clear' })}>Clear zones</button>
+              {tel.map && <label><input type="checkbox" checked={showSlam} onChange={(e) => setShowSlam(e.target.checked)} /> SLAM map</label>}
+              {!controller && <p className="help">Only the driver can emergency-stop.</p>}
+            </div>
           </div>
-          <div className="pad" aria-disabled={!canEdit}>
-            <span />
-            <PadButton label="Forward" glyph="▲" disabled={!canEdit} onDown={() => startNudge(0.15, 0)} onUp={stopNudge} />
-            <span />
-            <PadButton label="Rotate left" glyph="◀" disabled={!canEdit} onDown={() => startNudge(0, 0.6)} onUp={stopNudge} />
-            <button type="button" aria-label="E-STOP" disabled={!canEstop} onClick={() => { if (estop === 'ready') fireEstop(); }}>■</button>
-            <PadButton label="Rotate right" glyph="▶" disabled={!canEdit} onDown={() => startNudge(0, -0.6)} onUp={stopNudge} />
-            <span />
-            <PadButton label="Back" glyph="▼" disabled={!canEdit} onDown={() => startNudge(-0.15, 0)} onUp={stopNudge} />
-            <span />
-          </div>
-          {!controller && <p className="help">Only the driver can emergency-stop.</p>}
         </section>
 
-        <div className="right">
-          {!controller && (
-            <AccessBanner
-              flash={flash}
-              name={driverName}
-              waitingFor={tel.controllerName || driverName}
-              my={tel.myRequest}
-              now={now}
-              retryLeft={retryLeft}
-              pulse={pulse}
-              error={tel.requestError === 'network' || tel.requestError === 'join'}
-              offline={tel.link.phase === 'offline'}
-              onRequest={() => void tel.requestControl()}
-              onCancel={() => { if (tel.myRequest) void tel.cancelRequest(tel.myRequest.id); }}
-              onRetry={() => { if (tel.requestError) void tel.requestControl(); }}
-            />
-          )}
+        <div className="op-pair">
           <SystemCard frame={tel.frame} canEdit={canEdit} mapName={mapName} setMapName={setMapName} onSave={() => { if (mapNameError(mapName)) return; void send({ type: 'save_map', name: mapName || undefined }); }} />
           <StatusCard frame={tel.frame} />
-          <ToolsCard
-            frame={tel.frame}
-            canEdit={canEdit}
-            toolBusy={toolBusy}
-            padLabel={padLabel}
-            areaClear={areaClear}
-            setAreaClear={setAreaClear}
-            imu={imu}
-            setImu={setImu}
-            drive={drive}
-            setDrive={setDrive}
-            imuOk={imuOk}
-            driveOk={driveOk}
-            onRun={(tool, params) => void send({ type: 'run_tool', tool, params })}
-            onStop={() => void send({ type: 'stop_tool' })}
-            onVision={() => {
-              if (now - visionAt < 4000) return;
-              setVisionAt(now);
-              void send({ type: 'vision', on: !tel.frame?.vision });
-            }}
-          />
-          <WaypointCard seq={tel.frame?.seq ?? null} />
+        </div>
+
+        <ToolsCard
+          frame={tel.frame}
+          canEdit={canEdit}
+          toolBusy={toolBusy}
+          padLabel={padLabel}
+          areaClear={areaClear}
+          setAreaClear={setAreaClear}
+          imu={imu}
+          setImu={setImu}
+          drive={drive}
+          setDrive={setDrive}
+          imuOk={imuOk}
+          driveOk={driveOk}
+          onRun={(tool, params) => void send({ type: 'run_tool', tool, params })}
+          onStop={() => void send({ type: 'stop_tool' })}
+          onVision={() => {
+            if (now - visionAt < 4000) return;
+            setVisionAt(now);
+            void send({ type: 'vision', on: !tel.frame?.vision });
+          }}
+        />
+
+        <div className="op-pair">
           <CameraCard frame={tel.frame} phase={tel.link.phase} lastAt={tel.lastTelemetryAt} now={now} />
+          <WaypointCard seq={tel.frame?.seq ?? null} />
         </div>
 
         <section className="card" id="console" aria-label="Console">
-          <h2>Console — data & events</h2>
+          <h2>Console</h2>
           <div className="logbox" tabIndex={0} ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}>
             {tel.logs.map((ln, i) => (
               <div key={i} className={ln.level === 'tool' ? 'ln ln-tool' : `ln ${ln.level === 'error' || ln.level === 'run' || ln.level === 'info' ? ln.level : 'info'}`}>
@@ -530,9 +580,18 @@ export function Dashboard() {
         </section>
       </div>
 
+      <XboxController
+        open={padOpen}
+        onClose={() => setPadOpen(false)}
+        canEdit={canEdit}
+        padLabel={padLabel}
+        physical={physicalPad}
+        virtualRef={virtualPadRef}
+      />
+
       <div className="toasts" aria-live="polite">{toasts[0] && <div className="toast" role="status">{toasts[0].text}</div>}</div>
       {help && (
-        <div className="helpdlg" role="dialog" aria-label="Keyboard shortcuts">
+        <div className="helpdlg glass-liquid" role="dialog" aria-label="Keyboard shortcuts">
           <h3>Keyboard</h3>
           <p>W A S D or arrows drive. N nav, M no-go, C cancel, +/− zoom, G give, K keep. Space or Esc emergency-stops (not while typing).</p>
           <button type="button" className="btn" onClick={() => setHelp(false)}>Close</button>
@@ -639,7 +698,7 @@ function SystemCard({ frame, canEdit, mapName, setMapName, onSave }: { frame: No
       <div style={{ marginTop: 10 }}>
         <div className={`row ${canEdit ? '' : 'locked'}`} aria-disabled={!canEdit}>
           <input className={`mapname${mapNameError(mapName) ? ' bad' : ''}`} aria-label="map name (blank = timestamp)" aria-invalid={mapNameError(mapName) ? true : undefined} aria-describedby={mapNameError(mapName) ? 'map-name-err' : undefined} placeholder="map name (blank = timestamp)" value={mapName} onChange={(e) => setMapName(e.target.value)} />
-          <button type="button" className="btn" disabled={!!mapNameError(mapName)} onClick={onSave}>💾 Save map</button>
+          <button type="button" className="btn" disabled={!!mapNameError(mapName)} onClick={onSave}>Save map</button>
         </div>
         {mapNameError(mapName) && <p id="map-name-err" className="err" role="alert">{mapNameError(mapName)}</p>}
       </div>
@@ -707,17 +766,17 @@ function ToolsCard(props: {
     <section className="card" aria-label="Tools">
       <h2>Tools — run on demand only</h2>
       {props.frame?.tool && (
-        <div className="running">⏳ {props.frame.tool} running… <button type="button" className="btn stop" style={{ marginLeft: 'auto' }} disabled={!props.canEdit} onClick={props.onStop}>Stop</button></div>
+        <div className="running">{props.frame.tool} running… <button type="button" className="btn stop" style={{ marginLeft: 'auto' }} disabled={!props.canEdit} onClick={props.onStop}>Stop</button></div>
       )}
       <div className={lock} aria-disabled={!props.canEdit}>
         <div className="tool">
-          <h3>📐 IMU test</h3>
+          <h3>IMU test</h3>
           <p>Static analysis of /imu — bias, noise, rate. Keep the robot still.</p>
           <button type="button" className="btn" disabled={!props.canEdit || props.toolBusy} onClick={() => props.onRun('imu_test')}>Run test</button>
         </div>
         <div className="tool">
-          <h3>🧭 IMU calibration</h3>
-          <p>⚠ The robot ROTATES IN PLACE. Clear space around it first.</p>
+          <h3>IMU calibration</h3>
+          <p>The robot rotates in place. Clear space around it first.</p>
           <div className="row">
             <label>speed rad/s <input className={props.imuOk ? '' : 'bad'} value={props.imu.speed} onChange={(e) => props.setImu({ ...props.imu, speed: e.target.value })} /></label>
             <label>rotations <input className={props.imuOk ? '' : 'bad'} value={props.imu.rotations} onChange={(e) => props.setImu({ ...props.imu, rotations: e.target.value })} /></label>
@@ -726,8 +785,8 @@ function ToolsCard(props: {
           </div>
         </div>
         <div className="tool">
-          <h3>📏 Drive distance</h3>
-          <p>⚠ The robot DRIVES the given distance (negative = backward).</p>
+          <h3>Drive distance</h3>
+          <p>Drives the given distance (negative = backward).</p>
           <div className="row">
             <label>distance m <input className={props.driveOk ? '' : 'bad'} value={props.drive.distance} onChange={(e) => props.setDrive({ ...props.drive, distance: e.target.value })} /></label>
             <label>max vel m/s <input className={props.driveOk ? '' : 'bad'} value={props.drive.maxVel} onChange={(e) => props.setDrive({ ...props.drive, maxVel: e.target.value })} /></label>
@@ -735,15 +794,15 @@ function ToolsCard(props: {
           </div>
         </div>
         <div className="tool">
-          <h3>🎥 Semantic vision</h3>
-          <p>YOLO-World camera detections + LiDAR depth → labelled objects on the map (needs the camera connected). Runs alongside the tools above.</p>
+          <h3>Semantic vision</h3>
+          <p>YOLO-World + LiDAR depth → labelled objects on the map. Needs camera connected.</p>
           <button type="button" className={props.frame?.vision ? 'btn stop' : 'btn'} disabled={!props.canEdit} onClick={props.onVision}>{props.frame?.vision ? 'Stop' : 'Start'}</button>
-          {props.frame?.yoloText && <p>👁 {props.frame.yoloText}</p>}
+          {props.frame?.yoloText && <p>{props.frame.yoloText}</p>}
         </div>
       </div>
-      <p className="help">🎮 Gamepad: <b>B</b> save map · <b>X</b> vision on/off · <b>A</b> waypoint seq start/stop · <b>LT+RT+LB+RB</b> IMU calibration</p>
+      <p className="help">Gamepad: <b>B</b> save map · <b>X</b> vision · <b>A</b> waypoint seq · <b>LT+RT+LB+RB</b> IMU cal</p>
       <p className="help" style={{ color: props.padLabel === 'connected' ? 'var(--ok)' : 'var(--dim)' }}>
-        🎮 {props.padLabel === 'connected' ? 'Gamepad connected' : props.padLabel === 'idle' ? 'Gamepad idle (view only)' : 'No gamepad'}
+        {props.padLabel === 'connected' ? 'Gamepad connected' : props.padLabel === 'idle' ? 'Gamepad idle (view only)' : 'No gamepad'}
       </p>
     </section>
   );
@@ -755,7 +814,7 @@ function WaypointCard({ seq }: { seq: { goals: [number, number][]; idx: number }
   const running = idx >= 0;
   return (
     <section className="card" aria-label="Waypoint sequence">
-      <h2>📍 Waypoint Sequence</h2>
+      <h2>Waypoint sequence</h2>
       <div className="seqlist" tabIndex={0}>
         {goals.map((g, i) => (
           <div key={i} className={`sq-item ${i === idx ? 'active' : i < idx && running ? 'done' : ''}`}>
@@ -794,7 +853,7 @@ function CameraCard({ frame, phase, lastAt, now }: { frame: NormState | null; ph
         : 'Camera unavailable until the robot is live';
   return (
     <section className="card" aria-label="Camera feed">
-      <h2>📷 Camera feed</h2>
+      <h2>Camera feed</h2>
       {src ? (
         <div className="camwrap">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -843,25 +902,6 @@ function StatusMark({ phase }: { phase: LinkPhase }) {
   if (phase === 'idle') return <span className="status-idle" aria-hidden />;
   if (phase === 'live') return <span className="status-live" aria-hidden />;
   return <span className="status-off" aria-hidden />;
-}
-
-function readGamepad(): { a: number[]; b: number } | null {
-  const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
-  const pad = Array.from(pads).find((p) => p && (p.mapping === 'standard' || p.axes.length >= 4));
-  if (!pad) return null;
-  const ax = (i: number) => pad.axes[i] ?? 0;
-  const btn = (i: number) => pad.buttons[i];
-  const dead = (n: number) => Math.abs(n) < 0.08 ? 0 : n;
-  const a = [
-    dead(-ax(0)), dead(-ax(1)), dead(-ax(2)), ax(3),
-    btn(6)?.value ?? 0, btn(7)?.value ?? 0,
-    (btn(15)?.pressed ? -1 : 0) + (btn(14)?.pressed ? 1 : 0),
-    (btn(12)?.pressed ? 1 : 0) + (btn(13)?.pressed ? -1 : 0),
-  ].map((n) => Math.round(n * 1000) / 1000);
-  let bits = 0;
-  const map: [number, number][] = [[0, 0], [1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [8, 6], [9, 7], [16, 8], [10, 9], [11, 10]];
-  for (const [idx, bit] of map) if (btn(idx)?.pressed) bits |= 1 << bit;
-  return { a, b: bits };
 }
 
 function Eye() {

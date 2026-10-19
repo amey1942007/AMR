@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useServices } from '@/components/providers/ServicesProvider';
 import { readConfig } from '@/lib/config';
 import { COPY } from '@/lib/control/access';
+import { WaveLines } from '@/components/effects/WaveLines';
+import '@/components/effects/effects.css';
 import '@/components/control/dashboard.css';
 
 export function SignInForm({ redirectTarget, startForgot = false }: { redirectTarget: string; startForgot?: boolean }) {
@@ -28,6 +30,7 @@ export function SignInForm({ redirectTarget, startForgot = false }: { redirectTa
   if (!auth.isAvailable()) {
     return (
       <div className="op op-auth-page">
+        <div className="op-bg" aria-hidden><WaveLines lines={5} /></div>
         <div className="op-auth">
           <div className="op-brand">AMR</div>
           <h1>Sign in</h1>
@@ -88,6 +91,7 @@ export function SignInForm({ redirectTarget, startForgot = false }: { redirectTa
 
   return (
     <div className="op op-auth-page">
+      <div className="op-bg" aria-hidden><WaveLines lines={5} /></div>
       <div className="op-auth">
         <div className="op-brand">AMR</div>
         <h1>{forgot ? 'Send reset link' : 'Sign in'}</h1>
