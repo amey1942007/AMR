@@ -29,7 +29,7 @@ export function SignInForm({ redirectTarget, startForgot = false }: { redirectTa
     return (
       <div className="op op-auth-page">
         <div className="op-auth">
-          <div className="word">🤖 AMR</div>
+          <div className="op-brand">AMR</div>
           <h1>Sign in</h1>
           <p className="sub">Sign-in isn&apos;t available yet.</p>
         </div>
@@ -89,7 +89,7 @@ export function SignInForm({ redirectTarget, startForgot = false }: { redirectTa
   return (
     <div className="op op-auth-page">
       <div className="op-auth">
-        <div>🤖 AMR</div>
+        <div className="op-brand">AMR</div>
         <h1>{forgot ? 'Send reset link' : 'Sign in'}</h1>
         {!forgot && <p className="sub">Operator access only.</p>}
         <form onSubmit={forgot ? onReset : onSignIn} noValidate>

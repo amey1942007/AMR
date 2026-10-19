@@ -333,7 +333,7 @@ export function Dashboard() {
         <div className="op-reconnect" role="status">{tel.heartbeatError || 'Reconnecting…'}</div>
       )}
       <header className="op-header">
-        <h1>🤖 {bot.label}</h1>
+        <h1><span className="op-brand">AMR</span> <span style={{ fontWeight: 600, letterSpacing: '0.02em' }}>{bot.label}</span></h1>
         <div className="op-switch" role="group" aria-label="Bot">
           {BOTS.map((b) => (
             <button key={b.id} type="button" aria-pressed={b.id === botId} onClick={() => { if (b.id !== botId) { setBotId(b.id); joined.current = false; } }}>{b.label}</button>
