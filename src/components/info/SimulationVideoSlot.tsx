@@ -2,10 +2,11 @@
 import { useEffect, useState } from 'react';
 import type { MediaVideo } from '@/services/types';
 import { fetchSiteVideo } from '@/services/adapters/media.supabase';
-import { simulationVideo } from '@/data/media';
+import { simulationSlides, simulationVideo } from '@/data/media';
 import { WaveLines } from '@/components/effects/WaveLines';
 import { FxPause } from '@/components/effects/FxPause';
 import { SimulationFacade } from '@/components/video/SimulationFacade';
+import { SimulationCarousel } from '@/components/video/SimulationCarousel';
 import '@/components/effects/effects.css';
 
 function fmt(sec?: number) {
@@ -28,20 +29,29 @@ function Placeholder() {
 }
 
 /**
- * Static `media.ts` wins when set (fixtures / local files). Otherwise loads a published
- * `site_videos` row from Supabase (id = simulation). Unpublished / missing → coming-soon placeholder.
+ * Prefer `simulationSlides` (coverflow carousel). Else static `media.ts` / Supabase single video.
+ * Unpublished / missing → coming-soon placeholder.
  */
 export function SimulationVideoSlot() {
   const [video, setVideo] = useState<MediaVideo | null>(simulationVideo);
+  const useCarousel = simulationSlides.length > 0 && process.env.NEXT_PUBLIC_SIM_VIDEO_FIXTURE !== '1';
 
   useEffect(() => {
-    if (simulationVideo) return;
+    if (useCarousel || simulationVideo) return;
     let cancelled = false;
     fetchSiteVideo('simulation').then((v) => {
       if (!cancelled && v) setVideo(v);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, []);
+  }, [useCarousel]);
+
+  if (useCarousel) {
+    return (
+      <div className="mx-auto mt-8 w-full max-w-[1100px] max-[1439px]:max-w-[960px]" aria-describedby="sim-lead">
+        <SimulationCarousel slides={simulationSlides} />
+      </div>
+    );
+  }
 
   const dur = fmt(video?.durationSec);
   return (

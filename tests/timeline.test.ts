@@ -13,7 +13,16 @@ describe('master timeline', () => {
   it('callouts never overlap at full opacity', () => {
     for (let p = 0; p <= 1; p += 0.005) { const s = at(p); expect([s.c1, s.c2, s.c3].filter((v) => v > 0.5).length).toBeLessThanOrEqual(1); }
   });
-  it('"Beyond" gone before clouds lighten (.78)', () => expect(at(0.8).beyond).toBe(0));
+  it('cloud beats never overlap at full opacity', () => {
+    for (let p = 0; p <= 1; p += 0.005) {
+      const s = at(p);
+      expect([s.cb1, s.cb2, s.cb3, s.cb4].filter((v) => v > 0.5).length).toBeLessThanOrEqual(1);
+    }
+  });
+  it('last cloud beat gone as dissolve settles', () => {
+    expect(at(0.92).cb4).toBe(0);
+    expect(at(0.72).cb2).toBeGreaterThan(0.5);
+  });
   it('reversible', () => { const a = at(0.47); at(0.9); expect(at(0.47)).toEqual(a); });
 });
 
