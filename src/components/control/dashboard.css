@@ -372,7 +372,14 @@
 }
 .op .btn:hover:not(:disabled) { background-position: 100% 0; }
 .op .btn:active:not(:disabled) { transform: scale(0.97); }
-.op .btn.stop { background: var(--warn); color: #2b1a00; }
+/* Stop / cancel: danger red — no mustard accents on action buttons. */
+.op .btn.stop {
+  background: rgba(255, 107, 139, 0.18);
+  color: var(--err);
+  border: 1px solid rgba(255, 107, 139, 0.55);
+  background-image: none;
+}
+.op .btn.stop:hover:not(:disabled) { background: rgba(255, 107, 139, 0.28); }
 .op .btn:disabled, .op .btn[aria-disabled="true"] { opacity: .35; cursor: not-allowed; }
 .op .btn.full { width: 100%; height: 40px; }
 .op .btn.ghost { background: transparent; color: var(--tx); border: 1px solid var(--edge); }
@@ -491,6 +498,18 @@
 }
 
 .op .offline { border: 1px solid var(--edge); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; color: var(--dim); font-size: 12px; }
+.op-offline-empty {
+  min-height: 280px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; gap: 8px; padding: 28px 20px;
+  border: 1px dashed var(--edge); border-radius: 12px;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(123, 47, 247, 0.12), transparent 55%),
+    rgba(8, 8, 14, 0.55);
+}
+.op-offline-title { margin: 0; font-size: 15px; font-weight: 700; color: var(--tx); font-family: var(--font-unbounded, system-ui), system-ui, sans-serif; }
+.op-offline-detail { margin: 0; max-width: 36ch; color: var(--dim); font-size: 13px; line-height: 1.45; }
+.op-offline-hint { margin: 4px 0 0; max-width: 40ch; color: var(--dim); font-size: 11px; opacity: 0.85; }
 .op .err { color: var(--err); font-size: 12px; display: flex; gap: 6px; align-items: flex-start; }
 .op .spin { width: 12px; height: 12px; border: 2px solid var(--edge); border-top-color: var(--warn); border-radius: 50%; animation: op-spin .8s linear infinite; display: inline-block; }
 @keyframes op-spin { to { transform: rotate(360deg); } }

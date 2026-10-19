@@ -87,7 +87,19 @@ async function prep(o: Object3D) {
     for (const v of victims) { v.removeFromParent(); v.geometry.dispose(); } // data was copied into the merge
     o.add(merged);
   }
-  o.traverse((c) => { const m = c as Mesh; if (m.isMesh) { m.castShadow = false; m.receiveShadow = false; /* baked static map: robot grounded by blob + N8AO */ } });
+  o.traverse((c) => {
+    const m = c as Mesh;
+    if (!m.isMesh) return;
+    m.castShadow = false;
+    m.receiveShadow = false; /* baked static map: robot grounded by blob + N8AO */
+    // Pull washed-out chassis colours down so the bot reads against the pale floor/walls.
+    for (const mat of (Array.isArray(m.material) ? m.material : [m.material]) as Material[]) {
+      const any = mat as Material & { color?: { r: number; g: number; b: number; multiplyScalar: (s: number) => void }; roughness?: number; metalness?: number };
+      if (any.color && any.color.r > 0.5 && any.color.g > 0.5 && any.color.b > 0.5) any.color.multiplyScalar(0.52);
+      if (typeof any.roughness === 'number') any.roughness = Math.min(0.78, Math.max(0.22, any.roughness * 0.92));
+      if (typeof any.metalness === 'number') any.metalness = Math.min(0.9, any.metalness + 0.08);
+    }
+  });
   return o;
 }
 function setOpacity(o: Object3D, a: number) {
@@ -107,17 +119,19 @@ function Blob() {
   const tex = useMemo(() => {
     if (typeof document === 'undefined') return null;
     const c = document.createElement('canvas'); c.width = c.height = 64;
-    const g = c.getContext('2d')!, r = g.createRadialGradient(32, 32, 4, 32, 32, 32);
-    r.addColorStop(0, 'rgba(0,0,0,0.55)'); r.addColorStop(1, 'rgba(0,0,0,0)');
+    const g = c.getContext('2d')!, r = g.createRadialGradient(32, 32, 3, 32, 32, 32);
+    r.addColorStop(0, 'rgba(0,0,0,0.78)');
+    r.addColorStop(0.45, 'rgba(0,0,0,0.38)');
+    r.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = r; g.fillRect(0, 0, 64, 64);
     return new CanvasTexture(c);
   }, []);
   useEffect(() => () => tex?.dispose(), [tex]);
   if (!tex) return null;
   return (
-    <mesh rotation-x={-Math.PI / 2} position-y={0.004} renderOrder={1}>
-      <planeGeometry args={[0.9, 1.0]} />
-      <meshBasicMaterial map={tex} transparent depthWrite={false} />
+    <mesh rotation-x={-Math.PI / 2} position-y={0.003} renderOrder={1}>
+      <planeGeometry args={[1.15, 1.25]} />
+      <meshBasicMaterial map={tex} transparent depthWrite={false} opacity={0.95} />
     </mesh>
   );
 }

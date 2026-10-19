@@ -104,11 +104,13 @@ Deno.serve(async (req) => {
   if (!row || row.active === false) return json({ status: "invalid" });
 
   if (action === "status") {
+    // Include email so the client can sign in without a second round-trip.
     return json({
       status: "ok",
       username: row.username,
       displayName: row.display_name ?? row.username,
       needsPassword: !row.password_set,
+      email: row.auth_email,
     });
   }
 

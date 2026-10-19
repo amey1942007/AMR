@@ -23,32 +23,32 @@ export function StandInRobot() {
   return (
     <group name="amr_standin">
       <RoundedBox name="chassis" args={[0.52, 0.12, 0.63]} radius={0.025} smoothness={4} position={[0, 0.1, 0]}>
-        <meshPhysicalMaterial color="#1A1A22" metalness={0.6} roughness={0.35} clearcoat={0.3} />
+        <meshPhysicalMaterial color="#0C0C12" metalness={0.72} roughness={0.28} clearcoat={0.55} clearcoatRoughness={0.2} />
       </RoundedBox>
       <mesh name="accent_strip" position={[0, 0.1, 0.317]}>
         <boxGeometry args={[0.4, 0.012, 0.004]} />
-        <meshStandardMaterial color="#E81CB0" emissive="#E81CB0" emissiveIntensity={2} toneMapped={false} />
+        <meshStandardMaterial color="#E81CB0" emissive="#E81CB0" emissiveIntensity={2.4} toneMapped={false} />
       </mesh>
       {WHEELS.map(([n, x, z]) => (
         <group key={n} name={n} position={[x, 0.05, z]}>
           <mesh rotation-z={Math.PI / 2}>
-            <cylinderGeometry args={[0.05, 0.05, 0.05, 32]} />
-            <meshPhysicalMaterial map={stripes} roughness={0.85} sheen={0.2} />
+            <cylinderGeometry args={[0.05, 0.05, 0.05, 48]} />
+            <meshPhysicalMaterial map={stripes} color="#1a1a20" roughness={0.7} metalness={0.15} sheen={0.15} />
           </mesh>
         </group>
       ))}
       <mesh name="lidar_base" position={[0, 0.175, 0.12]}>
         <cylinderGeometry args={[0.045, 0.045, 0.03, 32]} />
-        <meshPhysicalMaterial color="#222" metalness={0.8} roughness={0.3} />
+        <meshPhysicalMaterial color="#1a1a22" metalness={0.85} roughness={0.22} />
       </mesh>
       <group name="lidar_top" position={[0, 0.21, 0.12]}>
         <mesh>
           <cylinderGeometry args={[0.04, 0.04, 0.04, 32]} />
-          <meshPhysicalMaterial color="#151518" metalness={0.5} roughness={0.25} />
+          <meshPhysicalMaterial color="#101014" metalness={0.55} roughness={0.2} />
         </mesh>
         <mesh rotation-x={Math.PI / 2}>
           <torusGeometry args={[0.041, 0.004, 12, 48]} />
-          <meshStandardMaterial color="#E81CB0" emissive="#E81CB0" emissiveIntensity={1.5} toneMapped={false} />
+          <meshStandardMaterial color="#E81CB0" emissive="#E81CB0" emissiveIntensity={2} toneMapped={false} />
         </mesh>
       </group>
     </group>

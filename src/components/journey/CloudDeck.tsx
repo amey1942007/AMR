@@ -79,7 +79,8 @@ export function CloudDeck({ count = 8, segments = 16, low = false }: { count?: n
   }, [tex, count, segments, low]);
   useEffect(() => () => { geo.dispose(); mat.dispose(); }, [geo, mat]);
   useFrame(() => {
-    mat.uniforms.uTime.value = clock.getElapsedTime();
+    // LOW shader already freezes drift; skip the time uniform so we don't dirty GPU state every frame.
+    if (!low) mat.uniforms.uTime.value = clock.getElapsedTime();
     mat.uniforms.uOpacity.value = S.cloudOpacity;
     mat.uniforms.uLightMix.value = S.cloudLight;
     mat.uniforms.uDissolve.value = S.cloudDissolve * 1.05;
