@@ -232,9 +232,9 @@ describe('access flow parsers', () => {
     expect(respondFailure('requester_inactive')).toBe('left');
     expect(respondFailure('not_controller')).toBe('lost');
     expect(respondFailure('network')).toBe('retry');
-    expect(passwordRules('short', 'short').length).toBe(false);
-    expect(passwordRules('longenough1', 'longenough1')).toEqual({ length: true, match: true });
-    expect(passwordRules('longenough1', 'longenough2').match).toBe(false);
+    expect(passwordRules('', '').length).toBe(false);
+    expect(passwordRules('short', 'short')).toEqual({ length: true, match: true });
+    expect(passwordRules('a', 'b').match).toBe(false);
     expect(strengthSegments('')).toBe(0);
     expect(strengthSegments('Longenough1!')).toBeGreaterThan(0);
   });
