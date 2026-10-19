@@ -129,63 +129,46 @@
 .op .pill.vision { background: rgba(123, 47, 247, 0.18); color: #d9ccff; }
 .op .pill.saving { background: rgba(123, 47, 247, 0.18); color: #d9ccff; }
 .op .pill.viewer { background: transparent; color: var(--dim); border: 1px solid var(--edge); }
-.op .pill.link.live { background: rgba(94, 230, 168, 0.14); color: var(--ok); }
-.op .pill.link.idle { background: rgba(255, 183, 77, 0.14); color: var(--warn); }
-.op .pill.link.connecting { background: transparent; color: var(--dim); border: 1px solid var(--edge); }
-.op .pill.link.offline { background: rgba(255, 107, 139, 0.14); color: var(--err); }
-.op .status-ring, .op .status-idle, .op .status-live, .op .status-off {
-  width: 7px; height: 7px; flex: none; border-radius: 50%; display: inline-block;
+/* Link state: single colored dot (green / yellow / red). Text lives in aria-label + title. */
+.op-link-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; flex: none; border-radius: 50%;
+  background: transparent;
 }
-.op .status-ring { border: 1.5px solid var(--dim); animation: control-status-pulse 1.6s var(--ease-out) infinite; }
-.op .status-idle { border: 1px solid var(--warn); background: linear-gradient(90deg, var(--warn) 50%, transparent 50%); }
-.op .status-live { background: var(--ok); box-shadow: 0 0 0 0 rgba(94, 230, 168, 0.5); animation: op-live-glow 2s ease-out infinite; }
-.op .status-off { border: 1px solid var(--err); background: transparent; }
-@keyframes control-status-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(125, 143, 161, 0.55); }
-  100% { box-shadow: 0 0 0 6px rgba(125, 143, 161, 0); }
+.op-link-dot-core {
+  width: 10px; height: 10px; border-radius: 50%; display: block;
+}
+.op-link-dot.ok .op-link-dot-core {
+  background: var(--ok);
+  box-shadow: 0 0 0 0 rgba(94, 230, 168, 0.5);
+  animation: op-live-glow 2s ease-out infinite;
+}
+.op-link-dot.warn .op-link-dot-core {
+  background: var(--warn);
+  box-shadow: 0 0 0 0 rgba(255, 183, 77, 0.45);
+  animation: op-warn-glow 1.6s ease-out infinite;
+}
+.op-link-dot.err .op-link-dot-core {
+  background: var(--err);
+  box-shadow: 0 0 0 0 rgba(255, 107, 139, 0.4);
+  animation: op-err-glow 1.8s ease-out infinite;
 }
 @keyframes op-live-glow {
   0% { box-shadow: 0 0 0 0 rgba(94, 230, 168, 0.45); }
   100% { box-shadow: 0 0 0 8px rgba(94, 230, 168, 0); }
 }
-
-/* Status strip — primary compartment, always on top */
-.op-status {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
-  padding: 8px 14px 10px;
-  border-top: 1px solid rgba(255,255,255,0.06);
+@keyframes op-warn-glow {
+  0% { box-shadow: 0 0 0 0 rgba(255, 183, 77, 0.5); }
+  100% { box-shadow: 0 0 0 7px rgba(255, 183, 77, 0); }
 }
-.op-status-row {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;
+@keyframes op-err-glow {
+  0% { box-shadow: 0 0 0 0 rgba(255, 107, 139, 0.45); }
+  100% { box-shadow: 0 0 0 7px rgba(255, 107, 139, 0); }
 }
-.op-signs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0; background: transparent; border: 0; }
-.op-sign {
-  display: inline-flex; align-items: center; gap: 6px; min-height: 26px;
-  padding: 2px 8px; border: 1px solid transparent; border-radius: 8px;
-  color: var(--dim); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
-  background: rgba(255,255,255,0.03); transition: border-color 200ms, color 200ms, background 200ms;
+.op .sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
-.op-sign[data-on="true"] { border-color: currentColor; color: var(--tx); background: rgba(255,255,255,0.06); }
-.op-sign.sign-nodata[data-on="true"] { color: var(--warn); }
-.op-sign.sign-down[data-on="true"] { color: var(--err); }
-.op-sign.sign-error[data-on="true"] { color: var(--err); }
-.op-sign .reason { font-weight: 500; color: var(--dim); text-transform: none; letter-spacing: 0; }
-.op-sign .sign-half, .op-sign .sign-hollow, .op-sign .sign-x { width: 10px; height: 10px; flex: none; }
-.op-sign .sign-half {
-  border-radius: 50%; border: 1.5px solid currentColor;
-  background: linear-gradient(90deg, currentColor 50%, transparent 50%);
-}
-.op-sign .sign-hollow { border-radius: 50%; border: 1.5px solid currentColor; background: transparent; }
-.op-sign .sign-x { display: block; }
-.op-note { font-size: 12px; font-weight: 500; color: var(--dim); }
-.op-telem {
-  margin-left: auto; font-size: 12px; color: #d9ccff;
-  padding: 4px 10px; border-radius: 8px;
-  background: rgba(123, 47, 247, 0.12); border: 1px solid rgba(123, 47, 247, 0.25);
-}
-
 .op-grow { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .op-estop {
   background: var(--err); color: #050507; border: 0; border-radius: 10px;
@@ -679,7 +662,7 @@
   .op .telem { margin-left: 0; width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .op .spin, .op .pulse, .op .status-ring, .op .status-live, .op-estop-bar,
+  .op .spin, .op .pulse, .op-link-dot-core, .op-estop-bar,
   .op-sticky, .op-main > .banner, .op-layout > .card, .op-layout > .op-sysrail > .card,
   .op-layout > .op-tools > .card, .op-layout > .op-way > .card,
   .op .skel::after, .op .toast, .op .menu, .op .helpdlg, .op-auth,

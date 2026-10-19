@@ -51,7 +51,7 @@ export default function JourneyCanvas({ tier, mobile, saveData, onFail }: { tier
       shadows={high ? { type: debug && window.location.search.includes('pcf') ? PCFShadowMap : VSMShadowMap } : false}
       // Review #12: the high-tier composer does 4× MSAA, so the default framebuffer stays non-antialiased.
       gl={{ antialias: !high, alpha: true, powerPreference: 'high-performance', stencil: false }}
-      camera={{ fov: 28, near: 0.05, far: 400, position: [-2.5, 0.45, 3.1] }}
+      camera={{ fov: 28, near: 0.05, far: 400, position: [-2.6, 0.45, 4.2] }}
       onCreated={({ gl, set }) => {
         set({ clock: new TimerClock() as unknown as import('three').Clock }); // review r2 low #3: Timer, not Clock
         gl.toneMapping = AgXToneMapping;
