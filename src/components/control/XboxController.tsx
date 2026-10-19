@@ -28,14 +28,20 @@ type Props = {
 
 export function XboxController({ open, onClose, canEdit, padLabel, physical, virtualRef }: Props) {
   const [virt, setVirt] = useState<JoyReading>(ZERO);
+  const [wasOpen, setWasOpen] = useState(open);
   const drag = useRef<{ stick: 'L' | 'R'; pointerId: number } | null>(null);
   const leftRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
 
+  // Reset pad state when the modal closes (allowed during render — avoids set-state-in-effect lint).
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (!open) setVirt(ZERO);
+  }
+
   useEffect(() => {
     if (!open) {
       virtualRef.current = null;
-      setVirt(ZERO);
       return;
     }
     return () => { virtualRef.current = null; };
