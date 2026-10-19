@@ -35,7 +35,7 @@ export function Dashboard() {
   const cfg = readConfig();
   const [client, setClient] = useState<SupabaseClient | null>(null);
   const [broadcastClient, setBroadcastClient] = useState<SupabaseClient | null>(null);
-  const [botId, setBotId] = useState<BotId>('hardware-bot');
+  const [botId, setBotId] = useState<BotId>(() => readStoredBot('hardware-bot'));
   const userId = session?.userId ?? null;
   const tel = useControlSession(client, userId, botId, broadcastClient);
 
@@ -67,15 +67,12 @@ export function Dashboard() {
   const joined = useRef(false);
 
   useEffect(() => {
-    const stored = readStoredBot('hardware-bot');
-    setBotId(stored);
-    persistBot(stored);
-  }, []);
+    persistBot(botId);
+  }, [botId]);
 
   const selectBot = useCallback((id: BotId) => {
     if (id === botId) return;
     setBotId(id);
-    persistBot(id);
     joined.current = false;
   }, [botId]);
   const estopTimer = useRef(0);
