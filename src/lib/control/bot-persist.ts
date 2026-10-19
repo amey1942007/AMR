@@ -3,7 +3,7 @@ import { BOTS, type BotId } from '@/lib/telemetry/protocol';
 const KEY = 'amr-control-bot';
 
 export function isBotId(v: string | null | undefined): v is BotId {
-  return BOTS.some((b) => b.id === v);
+  return !!v && BOTS.some((b) => b.id === v);
 }
 
 /** URL `?bot=` wins, then localStorage, then Hardware bot. */

@@ -16,7 +16,7 @@ import { persistBot, readStoredBot } from '@/lib/control/bot-persist';
 import type { NormState } from '@/lib/telemetry/normalize';
 import { WaveLines } from '@/components/effects/WaveLines';
 import { LiveCanvas } from './LiveCanvas';
-import { XboxController, readPhysicalGamepad, type JoyReading } from './XboxController';
+import { readPhysicalGamepad, type JoyReading } from './XboxController';
 import '@/components/effects/effects.css';
 import './dashboard.css';
 
@@ -53,9 +53,8 @@ export function Dashboard() {
   const [account, setAccount] = useState(false);
   const [help, setHelp] = useState(false);
   const [padLabel, setPadLabel] = useState<'none' | 'connected' | 'idle'>('none');
-  const [padOpen, setPadOpen] = useState(false);
-  const [physicalPad, setPhysicalPad] = useState<JoyReading | null>(null);
   const virtualPadRef = useRef<JoyReading | null>(null);
+  const padWin = useRef<Window | null>(null);
   const [toasts, setToasts] = useState<{ id: number; text: string; until: number }[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const [flash, setFlash] = useState<'granted' | 'denied' | 'timeout' | null>(null);
@@ -251,7 +250,6 @@ export function Dashboard() {
       timer = window.setTimeout(tick, 1000 / JOY_HZ);
       if (!alive) return;
       const physical = readPhysicalGamepad();
-      setPhysicalPad(physical);
       const reading = virtualPadRef.current ?? physical;
       const next = !physical && !virtualPadRef.current
         ? 'none'
@@ -385,10 +383,27 @@ export function Dashboard() {
             )}
             <button
               type="button"
-              className={`btn ghost xb-open ${padOpen ? 'on' : ''}`}
-              aria-pressed={padOpen}
-              onClick={() => setPadOpen((v) => !v)}
-              title="Open Xbox controller"
+              className="btn ghost xb-open"
+              onClick={() => {
+                const url = asset(`/control/pad/?bot=${botId}`);
+                try {
+                  if (padWin.current && !padWin.current.closed) {
+                    padWin.current.focus();
+                    padWin.current.location.href = url;
+                    return;
+                  }
+                } catch { /* cross-origin */ }
+                padWin.current = window.open(
+                  url,
+                  'amr-controller',
+                  'popup=yes,width=440,height=820,menubar=no,toolbar=no,location=no,status=no',
+                );
+                if (!padWin.current) {
+                  // Popup blocked — navigate same tab (mobile Safari often blocks popups).
+                  window.location.assign(url);
+                }
+              }}
+              title="Open controller in a new window (mobile complete control)"
             >
               Controller
             </button>
@@ -477,115 +492,116 @@ export function Dashboard() {
           />
         )}
 
-        <section className="card" aria-label="Live view">
-          <h2>Live view · odom · wheel-zoom · click = nav goal</h2>
-          {tel.link.phase === 'offline' && (
-            <div className="offline">
-              <p style={{ color: 'var(--tx)', fontWeight: 700 }}>
-                {tel.link.unreadable ? tel.link.label : `${bot.label} is offline`}
-              </p>
-              <p>
-                {tel.link.unreadable
-                  ? tel.link.offlineDetail
-                  : offlineMessage(tel.link.offlineDetail ?? '', tel.link.lastSeenAtMs, now)}
-              </p>
-            </div>
-          )}
-          {!robotLive && <p className="help">Waiting for robot…</p>}
-          <LiveCanvas state={tel.frame} map={tel.map} scale={scale} onScale={setScale} canEdit={canEdit} mode={mode} showSlam={showSlam} lastAt={tel.lastTelemetryAt} placeholder={tel.link.mapPlaceholder} onNav={(x, y) => void send({ type: 'nav_goal', x, y })} onBlacklist={(x, y, radius) => void send({ type: 'blacklist', action: 'add', x, y, radius, duration })} />
-          <div className="readouts">
-            <Tile k="x (odom)" v={fmt(tel.frame?.pose?.[0], 2)} />
-            <Tile k="y (odom)" v={fmt(tel.frame?.pose?.[1], 2)} />
-            <Tile k="yaw°" v={tel.frame?.pose ? (tel.frame.pose[2] * 57.2958).toFixed(1) : '–'} />
-            <Tile k="v m/s" v={fmt(tel.frame?.vel[0], 2)} />
-            <Tile k="ω rad/s" v={fmt(tel.frame?.vel[1], 2)} />
-            <Tile k="gyro z" v={tel.frame ? tel.frame.imu.gz.toFixed(3) : '–'} />
-            <Tile k="cmd v" v={fmt(tel.frame?.cmd[0], 2)} />
-            <Tile k="cmd ω" v={fmt(tel.frame?.cmd[1], 2)} />
-            <Tile k="map pose" v={tel.frame?.mapPose ? `${tel.frame.mapPose[0].toFixed(2)}, ${tel.frame.mapPose[1].toFixed(2)}` : '–'} />
-          </div>
-          <div className="op-controls" style={{ marginTop: 10 }}>
-            <div className="pad" aria-disabled={!canEdit}>
-              <span />
-              <PadButton label="Forward" glyph="▲" disabled={!canEdit} onDown={() => startNudge(0.15, 0)} onUp={stopNudge} />
-              <span />
-              <PadButton label="Rotate left" glyph="◀" disabled={!canEdit} onDown={() => startNudge(0, 0.6)} onUp={stopNudge} />
-              <button type="button" aria-label="E-STOP" disabled={!canEstop} onClick={() => { if (estop === 'ready') fireEstop(); }}>■</button>
-              <PadButton label="Rotate right" glyph="▶" disabled={!canEdit} onDown={() => startNudge(0, -0.6)} onUp={stopNudge} />
-              <span />
-              <PadButton label="Back" glyph="▼" disabled={!canEdit} onDown={() => startNudge(-0.15, 0)} onUp={stopNudge} />
-              <span />
-            </div>
-            <div className={`navmode ${canEdit ? '' : 'locked'}`} aria-disabled={!canEdit}>
-              <label><input type="checkbox" checked={mode === 'nav'} onChange={() => setExclusive('nav')} /> Nav-goal</label>
-              <button type="button" className="btn stop" style={{ padding: '4px 12px' }} onClick={() => void send({ type: 'nav_cancel' })}>Cancel goal</button>
-              <label title="Waypoint sequences aren't available remotely yet."><input type="checkbox" disabled /> Seq-add</label>
-              <label><input type="checkbox" checked={mode === 'nogo'} onChange={() => setExclusive('nogo')} /> No-go</label>
-              <select aria-label="No-go duration" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
-                <option value={60}>1 min</option>
-                <option value={300}>5 min</option>
-                <option value={900}>15 min</option>
-                <option value={0}>permanent</option>
-              </select>
-              <button type="button" className="btn stop" onClick={() => void send({ type: 'blacklist', action: 'clear' })}>Clear zones</button>
-              {tel.map && <label><input type="checkbox" checked={showSlam} onChange={(e) => setShowSlam(e.target.checked)} /> SLAM map</label>}
-              {!controller && <p className="help">Only the driver can emergency-stop.</p>}
-            </div>
-          </div>
-        </section>
-
-        <div className="op-pair">
-          <SystemCard frame={tel.frame} canEdit={canEdit} mapName={mapName} setMapName={setMapName} onSave={() => { if (mapNameError(mapName)) return; void send({ type: 'save_map', name: mapName || undefined }); }} />
-          <StatusCard frame={tel.frame} />
-        </div>
-
-        <ToolsCard
-          frame={tel.frame}
-          canEdit={canEdit}
-          toolBusy={toolBusy}
-          padLabel={padLabel}
-          areaClear={areaClear}
-          setAreaClear={setAreaClear}
-          imu={imu}
-          setImu={setImu}
-          drive={drive}
-          setDrive={setDrive}
-          imuOk={imuOk}
-          driveOk={driveOk}
-          onRun={(tool, params) => void send({ type: 'run_tool', tool, params })}
-          onStop={() => void send({ type: 'stop_tool' })}
-          onVision={() => {
-            if (now - visionAt < 4000) return;
-            setVisionAt(now);
-            void send({ type: 'vision', on: !tel.frame?.vision });
-          }}
-        />
-
-        <div className="op-pair">
-          <CameraCard frame={tel.frame} phase={tel.link.phase} lastAt={tel.lastTelemetryAt} now={now} />
-          <WaypointCard seq={tel.frame?.seq ?? null} />
-        </div>
-
-        <section className="card" id="console" aria-label="Console">
-          <h2>Console</h2>
-          <div className="logbox" tabIndex={0} ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}>
-            {tel.logs.map((ln, i) => (
-              <div key={i} className={ln.level === 'tool' ? 'ln ln-tool' : `ln ${ln.level === 'error' || ln.level === 'run' || ln.level === 'info' ? ln.level : 'info'}`}>
-                <span className="t">{ln.time}</span>{ln.text}
+        <div className="op-layout">
+          <section className="card op-live" aria-label="Live view">
+            <h2>Live view · odom · wheel-zoom · click = nav goal</h2>
+            {tel.link.phase === 'offline' && (
+              <div className="offline">
+                <p style={{ color: 'var(--tx)', fontWeight: 700 }}>
+                  {tel.link.unreadable ? tel.link.label : `${bot.label} is offline`}
+                </p>
+                <p>
+                  {tel.link.unreadable
+                    ? tel.link.offlineDetail
+                    : offlineMessage(tel.link.offlineDetail ?? '', tel.link.lastSeenAtMs, now)}
+                </p>
               </div>
-            ))}
-          </div>
-        </section>
-      </div>
+            )}
+            {!robotLive && <p className="help">Waiting for robot…</p>}
+            <div className="op-live-stage">
+              <LiveCanvas state={tel.frame} map={tel.map} scale={scale} onScale={setScale} canEdit={canEdit} mode={mode} showSlam={showSlam} lastAt={tel.lastTelemetryAt} placeholder={tel.link.mapPlaceholder} onNav={(x, y) => void send({ type: 'nav_goal', x, y })} onBlacklist={(x, y, radius) => void send({ type: 'blacklist', action: 'add', x, y, radius, duration })} />
+              <CameraPip frame={tel.frame} phase={tel.link.phase} lastAt={tel.lastTelemetryAt} now={now} />
+            </div>
+            <div className="readouts">
+              <Tile k="x (odom)" v={fmt(tel.frame?.pose?.[0], 2)} />
+              <Tile k="y (odom)" v={fmt(tel.frame?.pose?.[1], 2)} />
+              <Tile k="yaw°" v={tel.frame?.pose ? (tel.frame.pose[2] * 57.2958).toFixed(1) : '–'} />
+              <Tile k="v m/s" v={fmt(tel.frame?.vel[0], 2)} />
+              <Tile k="ω rad/s" v={fmt(tel.frame?.vel[1], 2)} />
+              <Tile k="gyro z" v={tel.frame ? tel.frame.imu.gz.toFixed(3) : '–'} />
+              <Tile k="cmd v" v={fmt(tel.frame?.cmd[0], 2)} />
+              <Tile k="cmd ω" v={fmt(tel.frame?.cmd[1], 2)} />
+              <Tile k="map pose" v={tel.frame?.mapPose ? `${tel.frame.mapPose[0].toFixed(2)}, ${tel.frame.mapPose[1].toFixed(2)}` : '–'} />
+            </div>
+            <div className="op-controls" style={{ marginTop: 10 }}>
+              <div className="pad" aria-disabled={!canEdit}>
+                <span />
+                <PadButton label="Forward" glyph="▲" disabled={!canEdit} onDown={() => startNudge(0.15, 0)} onUp={stopNudge} />
+                <span />
+                <PadButton label="Rotate left" glyph="◀" disabled={!canEdit} onDown={() => startNudge(0, 0.6)} onUp={stopNudge} />
+                <button type="button" aria-label="E-STOP" disabled={!canEstop} onClick={() => { if (estop === 'ready') fireEstop(); }}>■</button>
+                <PadButton label="Rotate right" glyph="▶" disabled={!canEdit} onDown={() => startNudge(0, -0.6)} onUp={stopNudge} />
+                <span />
+                <PadButton label="Back" glyph="▼" disabled={!canEdit} onDown={() => startNudge(-0.15, 0)} onUp={stopNudge} />
+                <span />
+              </div>
+              <div className={`navmode ${canEdit ? '' : 'locked'}`} aria-disabled={!canEdit}>
+                <label><input type="checkbox" checked={mode === 'nav'} onChange={() => setExclusive('nav')} /> Nav-goal</label>
+                <button type="button" className="btn stop" style={{ padding: '4px 12px' }} onClick={() => void send({ type: 'nav_cancel' })}>Cancel goal</button>
+                <label title="Waypoint sequences aren't available remotely yet."><input type="checkbox" disabled /> Seq-add</label>
+                <label><input type="checkbox" checked={mode === 'nogo'} onChange={() => setExclusive('nogo')} /> No-go</label>
+                <select aria-label="No-go duration" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
+                  <option value={60}>1 min</option>
+                  <option value={300}>5 min</option>
+                  <option value={900}>15 min</option>
+                  <option value={0}>permanent</option>
+                </select>
+                <button type="button" className="btn stop" onClick={() => void send({ type: 'blacklist', action: 'clear' })}>Clear zones</button>
+                {tel.map && <label><input type="checkbox" checked={showSlam} onChange={(e) => setShowSlam(e.target.checked)} /> SLAM map</label>}
+                {!controller && <p className="help">Only the driver can emergency-stop.</p>}
+              </div>
+            </div>
+          </section>
 
-      <XboxController
-        open={padOpen}
-        onClose={() => setPadOpen(false)}
-        canEdit={canEdit}
-        padLabel={padLabel}
-        physical={physicalPad}
-        virtualRef={virtualPadRef}
-      />
+          <aside className="op-sysrail" aria-label="System status and system">
+            <StatusCard frame={tel.frame} />
+            <SystemCard frame={tel.frame} canEdit={canEdit} mapName={mapName} setMapName={setMapName} onSave={() => { if (mapNameError(mapName)) return; void send({ type: 'save_map', name: mapName || undefined }); }} />
+          </aside>
+
+          <div className="op-tools">
+            <ToolsCard
+              frame={tel.frame}
+              canEdit={canEdit}
+              toolBusy={toolBusy}
+              padLabel={padLabel}
+              areaClear={areaClear}
+              setAreaClear={setAreaClear}
+              imu={imu}
+              setImu={setImu}
+              drive={drive}
+              setDrive={setDrive}
+              imuOk={imuOk}
+              driveOk={driveOk}
+              onRun={(tool, params) => void send({ type: 'run_tool', tool, params })}
+              onStop={() => void send({ type: 'stop_tool' })}
+              onVision={() => {
+                if (now - visionAt < 4000) return;
+                setVisionAt(now);
+                void send({ type: 'vision', on: !tel.frame?.vision });
+              }}
+            />
+          </div>
+
+          <div className="op-way">
+            <WaypointCard seq={tel.frame?.seq ?? null} />
+          </div>
+
+          <section className="card op-console" id="console" aria-label="Console">
+            <h2>Console</h2>
+            <div className="logbox" tabIndex={0} ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}>
+              {tel.logs.map((ln, i) => (
+                <div key={i} className={ln.level === 'tool' ? 'ln ln-tool' : `ln ${ln.level === 'error' || ln.level === 'run' || ln.level === 'info' ? ln.level : 'info'}`}>
+                  <span className="t">{ln.time}</span>{ln.text}
+                </div>
+              ))}
+            </div>
+            <div className="op-console-line" aria-hidden>
+              <span className="mono">amr@{bot.label.toLowerCase().replace(/\s+/g, '-')}</span>
+              <span className="op-console-cursor" />
+            </div>
+          </section>
+        </div>
+      </div>
 
       <div className="toasts" aria-live="polite">{toasts[0] && <div className="toast" role="status">{toasts[0].text}</div>}</div>
       {help && (
@@ -837,31 +853,27 @@ function WaypointCard({ seq }: { seq: { goals: [number, number][]; idx: number }
   );
 }
 
-function CameraCard({ frame, phase, lastAt, now }: { frame: NormState | null; phase: LinkPhase; lastAt: number | null; now: number }) {
-  const src = phase === 'live' && frame?.vision && frame.camera
+/** Picture-in-picture camera inside Live view when vision is on. */
+function CameraPip({ frame, phase, lastAt, now }: { frame: NormState | null; phase: LinkPhase; lastAt: number | null; now: number }) {
+  const on = phase === 'live' && !!frame?.vision;
+  if (!on) return null;
+  const src = frame?.camera
     ? (frame.camera.startsWith('data:') ? frame.camera : `data:image/jpeg;base64,${frame.camera}`)
     : null;
   const age = lastAt == null ? null : (now - lastAt) / 1000;
-  const copy = phase === 'live' && frame?.vision && !src
-    ? 'Waiting for camera…'
-    : phase === 'live' && !frame?.vision
-      ? 'Vision off — start vision to see camera feed'
-      : phase === 'connecting' || phase === 'live'
-        ? 'Waiting for camera…'
-        : 'Camera unavailable until the robot is live';
   return (
-    <section className="card" aria-label="Camera feed">
-      <h2>Camera feed</h2>
+    <aside className="op-cam-pip glass-liquid" aria-label="Camera feed">
+      <span className="op-cam-pip-label">Camera feed</span>
       {src ? (
-        <div className="camwrap">
+        <>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="cam" alt="Robot camera" src={src} />
-          <span className="camchip">{age != null && age > 3 ? `last frame ${age.toFixed(0)}s ago` : 'LIVE · ~1 fps'}</span>
-        </div>
+          <span className="camchip">{age != null && age > 3 ? `${age.toFixed(0)}s ago` : 'LIVE'}</span>
+        </>
       ) : (
-        <p className="muted">{copy}</p>
+        <p className="muted">Waiting for camera…</p>
       )}
-    </section>
+    </aside>
   );
 }
 
