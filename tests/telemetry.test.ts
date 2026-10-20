@@ -7,12 +7,18 @@ import {
   HEARTBEAT_OFFLINE_MS,
   LAG_FALLBACK_MS,
   LAG_RECOVER_MS,
+  STALE_VEIL_MS,
 } from '@/lib/telemetry/protocol';
 
 describe('telemetry protocol', () => {
   it('names realtime channels per bot', () => {
     expect(channelName('amr4')).toBe('amr-bot-amr4');
     expect(channelName('hardware-bot')).toBe('amr-bot-hardware-bot');
+  });
+
+  it('keeps the canvas stale veil at ~6s so brief lag does not flash no-data', () => {
+    expect(STALE_VEIL_MS).toBe(6_000);
+    expect(STALE_VEIL_MS).toBeLessThan(HEARTBEAT_OFFLINE_MS);
   });
 
   it('marks bot offline after the 10s heartbeat timeout', () => {

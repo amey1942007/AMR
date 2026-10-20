@@ -37,6 +37,8 @@ jobs:
           NEXT_PUBLIC_CONTACT_ADAPTER: supabase
           NEXT_PUBLIC_CONTACT_ENDPOINT: ${{ vars.NEXT_PUBLIC_CONTACT_ENDPOINT }}
           NEXT_PUBLIC_CONTROL_PANEL_URL: ${{ vars.NEXT_PUBLIC_CONTROL_PANEL_URL }}
+          # Pi bridge uses AMR_PUBLIC_CHANNEL=0; commands must go on bot:<id>:cmd.
+          NEXT_PUBLIC_PRIVATE_CONTROL: "1"
       - name: Stamp out/
         run: |
           touch out/.nojekyll

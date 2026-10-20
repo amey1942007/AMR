@@ -319,7 +319,7 @@ running so `/joy` is published at 30 Hz into the existing teleop stack.
 
 Agents integrating the **robot** should not change these unless explicitly asked.
 
-The website sign-in is email + password (`/sign-in`, `/set-password`). The `operator-auth` edge function source has been removed from this repo and must not be redeployed; the site does not call it and does not use Presence. `NEXT_PUBLIC_PRIVATE_CONTROL` is off by default, so the live site still subscribes to the public channels below. The private topics (`bot:<id>:status`, `:ctl`, `:cmd`, `user:<uid>:notify`) are implemented but not the cut-over. See `docs/private-control.md` in the website repo. This bridge still requires `from.rank` ≥ 1 on commands other than `set_rate`; the website no longer sends a rank.
+The website sign-in is email + password (`/sign-in`, `/set-password`). The `operator-auth` edge function source has been removed from this repo and must not be redeployed; the site does not call it and does not use Presence. Production sets `NEXT_PUBLIC_PRIVATE_CONTROL=1` so drive/nav use private `bot:<id>:cmd` (Pi keeps `AMR_PUBLIC_CHANNEL=0`). See `docs/private-control.md` in the website repo. Public-path commands still require `from.rank` ≥ 1; the website no longer sends a rank on that path.
 
 - Channels: `amr-bot-amr4`, `amr-bot-hardware-bot`
 - Events: `telemetry`, `map`, `hb`, `log`, `command`
