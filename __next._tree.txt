@@ -3,4 +3,4 @@
 :HL["/_next/static/media/unbounded_latin_wght_normal-s.p.1tz5lbfnvawi1.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
 :HL["/_next/static/chunks/3qi59a7gjl8g9.css","style"]
 1:[["children",{"s":"__PAGE__","h":128}]]
-0:{"b":"lNSPEOXu4r7oO_8riOgAu","t":{"t":{"s":"","h":16,"c":"$Q1"}}}
+0:{"b":"jdWZpqiZiO9Mkpv0BtQvb","t":{"t":{"s":"","h":16,"c":"$Q1"}}}
