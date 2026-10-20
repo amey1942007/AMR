@@ -10,7 +10,7 @@ import { HEARTBEAT_OFFLINE_MS } from './protocol';
  * about every 5s). The first read is not a change.
  *
  * Anon cannot SELECT `amr_bots` (RLS is `authenticated` only). A failed read
- * is not a heartbeat. `NEXT_PUBLIC_PRIVATE_CONTROL` stays off unless it is "1".
+ * is not a heartbeat. `NEXT_PUBLIC_PRIVATE_CONTROL` is on in the Pages build (`"1"`).
  */
 
 /** Bridge `_presence_touch_loop` waits 5s between `touch_amr_bot` calls. */

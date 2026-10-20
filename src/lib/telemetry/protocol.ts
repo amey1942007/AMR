@@ -9,8 +9,8 @@ export const BOTS: { id: BotId; label: string }[] = [
 
 /** No telemetry for this long → OFFLINE pill (access-flow spec). */
 export const HEARTBEAT_OFFLINE_MS = 10_000;
-/** Canvas stale veil. */
-export const STALE_VEIL_MS = 2_000;
+/** Canvas stale veil — long enough that brief lag does not flash “no data”. */
+export const STALE_VEIL_MS = 6_000;
 export const FULL_RATE_HZ = 10;
 export const BOARD_RATE_HZ = 1;
 /** Mean inter-frame lag above this → status-board fallback. */
